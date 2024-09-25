@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"net/http"
 	"strconv"
@@ -25,7 +24,6 @@ func (h *MetricUpdateHandler) init(mux *http.ServeMux) {
 }
 
 func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("a")
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -77,7 +75,7 @@ func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 	default:
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
