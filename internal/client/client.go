@@ -26,11 +26,11 @@ func NewClient(serverAddr string) *Client {
 func (c *Client) UpdateMetric(tp string, name string, value interface{}) error {
 	var url = "/update/" + tp + "/" + name
 
-	switch value.(type) {
+	switch val := value.(type) {
 	case int64:
-		url += "/" + strconv.FormatInt(value.(int64), 10)
+		url += "/" + strconv.FormatInt(val, 10)
 	case float64:
-		url += "/" + strconv.FormatFloat(value.(float64), 'f', -1, 64)
+		url += "/" + strconv.FormatFloat(val, 'f', -1, 64)
 	default:
 		return errors.New("invalid metric value type")
 	}

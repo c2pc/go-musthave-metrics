@@ -92,6 +92,4 @@ func (m *GaugeMetric) PollStats() {
 	m.stats[GaugeSysKey] = float64(memStats.Sys)
 	m.stats[GaugeTotalAllocKey] = float64(memStats.TotalAlloc)
 	m.stats[GaugeRandomValueKey] = rand.Float64()
-
-	return
 }

@@ -33,6 +33,4 @@ func (m *CounterMetric) PollStats() {
 	defer m.mu.Unlock()
 
 	m.stats[CounterPollCountKey] += 1
-
-	return
 }

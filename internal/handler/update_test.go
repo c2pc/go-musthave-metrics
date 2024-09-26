@@ -3,11 +3,11 @@ package handler_test
 import (
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestUserViewHandler(t *testing.T) {
@@ -59,8 +59,10 @@ func TestUserViewHandler(t *testing.T) {
 			h(w, request)
 
 			result := w.Result()
-
 			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			err := result.Body.Close()
+			require.NoError(t, err)
 		})
 	}
 }
