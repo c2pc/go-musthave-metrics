@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"net/http"
 	"strconv"
@@ -49,6 +50,7 @@ func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
+	fmt.Println("Updating ", metricType, metricName, metricValue)
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		var value float64
