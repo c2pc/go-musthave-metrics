@@ -1,11 +1,11 @@
 package storage
 
 type MetricValue interface {
-	String() string
+	float64 | int64
 }
 
 type Storage[T MetricValue] interface {
 	GetName() string
-	Get(key string) (string, error)
+	Get(key string) (T, error)
 	Set(key string, value T) error
 }

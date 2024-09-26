@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func NewHandler(gaugeStorage storage.Storage[storage.GaugeMetricValue], counterStorage storage.Storage[storage.CounterMetricValue]) http.Handler {
+func NewHandler(gaugeStorage storage.Storage[float64], counterStorage storage.Storage[int64]) http.Handler {
 	mux := http.NewServeMux()
 
 	newMetricUpdateHandler(gaugeStorage, counterStorage).init(mux)

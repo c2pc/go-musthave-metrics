@@ -2,22 +2,15 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 )
 
-type CounterMetricValue int64
-
-func (v CounterMetricValue) String() string {
-	return fmt.Sprintf("%d", v)
-}
-
 type CounterStorage struct {
-	storage map[string]CounterMetricValue
+	storage map[string]int64
 }
 
 func NewCounterStorage() *CounterStorage {
 	return &CounterStorage{
-		storage: make(map[string]CounterMetricValue),
+		storage: make(map[string]int64),
 	}
 }
 
@@ -25,16 +18,16 @@ func (s *CounterStorage) GetName() string {
 	return "counter"
 }
 
-func (s *CounterStorage) Get(key string) (string, error) {
+func (s *CounterStorage) Get(key string) (int64, error) {
 	value, ok := s.storage[key]
 	if !ok {
-		return "", errors.New("not found")
+		return 0, errors.New("not found")
 	}
 
-	return fmt.Sprintf("%d", value), nil
+	return value, nil
 }
 
-func (s *CounterStorage) Set(key string, value CounterMetricValue) error {
+func (s *CounterStorage) Set(key string, value int64) error {
 	if val, ok := s.storage[key]; ok {
 		s.storage[key] = val + value
 	} else {

@@ -7,13 +7,13 @@ import (
 )
 
 type MetricUpdateHandler struct {
-	gaugeStorage   storage.Storage[storage.GaugeMetricValue]
-	counterStorage storage.Storage[storage.CounterMetricValue]
+	gaugeStorage   storage.Storage[float64]
+	counterStorage storage.Storage[int64]
 }
 
 func newMetricUpdateHandler(
-	gaugeStorage storage.Storage[storage.GaugeMetricValue],
-	counterStorage storage.Storage[storage.CounterMetricValue],
+	gaugeStorage storage.Storage[float64],
+	counterStorage storage.Storage[int64],
 ) *MetricUpdateHandler {
 
 	return &MetricUpdateHandler{gaugeStorage, counterStorage}
@@ -57,7 +57,7 @@ func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := h.gaugeStorage.Set(metricName, storage.GaugeMetricValue(value)); err != nil {
+		if err := h.gaugeStorage.Set(metricName, value); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -69,7 +69,7 @@ func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := h.counterStorage.Set(metricName, storage.CounterMetricValue(value)); err != nil {
+		if err := h.counterStorage.Set(metricName, value); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
