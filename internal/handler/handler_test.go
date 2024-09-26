@@ -1,7 +1,8 @@
-package handler
+package handler_test
 
 import (
 	"fmt"
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -48,7 +49,7 @@ func TestNewHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewHandler(tt.args.gaugeStorage, tt.args.counterStorage)
+			_, err := handler.NewHandler(tt.args.gaugeStorage, tt.args.counterStorage)
 			if !tt.wantErr(t, err, fmt.Sprintf("NewHandler(%v, %v)", tt.args.gaugeStorage, tt.args.counterStorage)) {
 				return
 			}
