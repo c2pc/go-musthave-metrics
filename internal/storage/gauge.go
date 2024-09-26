@@ -15,7 +15,7 @@ func NewGaugeStorage() *GaugeStorage {
 }
 
 func (s *GaugeStorage) GetName() string {
-	return "counter"
+	return "gauge"
 }
 
 func (s *GaugeStorage) Get(key string) (float64, error) {
