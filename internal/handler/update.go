@@ -12,7 +12,7 @@ type MetricUpdateHandler struct {
 	counterStorage storage.Storage[int64]
 }
 
-func newMetricUpdateHandler(
+func NewMetricUpdateHandler(
 	gaugeStorage storage.Storage[float64],
 	counterStorage storage.Storage[int64],
 ) *MetricUpdateHandler {
@@ -20,11 +20,11 @@ func newMetricUpdateHandler(
 	return &MetricUpdateHandler{gaugeStorage, counterStorage}
 }
 
-func (h *MetricUpdateHandler) init(mux *http.ServeMux) {
-	mux.HandleFunc("/update/{type}/{name}/{value}", h.handle)
+func (h *MetricUpdateHandler) Init(mux *http.ServeMux) {
+	mux.HandleFunc("/update/{type}/{name}/{value}", h.HandleUpdate)
 }
 
-func (h *MetricUpdateHandler) handle(w http.ResponseWriter, r *http.Request) {
+func (h *MetricUpdateHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return

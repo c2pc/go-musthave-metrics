@@ -7,6 +7,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,7 +23,10 @@ func main() {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handlers := handler.NewHandler(gaugeStorage, counterStorage)
+	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	httpServer := server.NewServer(handlers, defaultPort)
 

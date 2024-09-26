@@ -78,7 +78,7 @@ func reportMetrics() {
 		go func() {
 			defer waitGroup.Done()
 			fmt.Printf("Update Counter metric: %s = %v\n", key, value)
-			err := client.UpdateMetric(counterMetric.GetName(), key, value)
+			err := client.UpdateMetric(counterMetric.GetName(), string(key), value)
 			if err != nil {
 				return
 			}
@@ -90,7 +90,7 @@ func reportMetrics() {
 		go func() {
 			defer waitGroup.Done()
 			fmt.Printf("Update Gauge metric: %s = %v\n", key, value)
-			err := client.UpdateMetric(gaugeMetric.GetName(), key, value)
+			err := client.UpdateMetric(gaugeMetric.GetName(), string(key), value)
 			if err != nil {
 				return
 			}
