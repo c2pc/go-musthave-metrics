@@ -33,16 +33,13 @@ func main() {
 	reportTicker := time.NewTicker(reportInterval)
 	defer reportTicker.Stop()
 
-	waitTicker := time.NewTicker(waitTime)
-	defer waitTicker.Stop()
-
 	for {
 		select {
 		case <-pollTicker.C:
 			pollMetrics()
 		case <-reportTicker.C:
 			reportMetrics()
-		case <-waitTicker.C:
+		case <-time.After(waitTime):
 			fmt.Println("Finish metrics reporter")
 			return
 		}
