@@ -3,6 +3,9 @@ package config
 import (
 	"flag"
 	"fmt"
+	"github.com/caarlos0/env/v6"
+	"log"
+	"os"
 )
 
 const (
@@ -17,6 +20,12 @@ var (
 	reportInterval = flag.Int("r", defaultReportInterval, "The interval between reports in seconds")
 )
 
+type envConfig struct {
+	ServerAddress  string `env:"ADDRESS"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+}
+
 type Config struct {
 	ServerAddress  string
 	PollInterval   int
@@ -25,18 +34,39 @@ type Config struct {
 }
 
 func Parse() (*Config, error) {
-	cfg := &Config{}
+	cfg := Config{}
 
 	flag.Parse()
-
 	if len(flag.Args()) > 0 {
 		return nil, fmt.Errorf("unknown argument: %s", flag.Args()[0])
 	}
 
-	cfg.ServerAddress = *serverAddress
-	cfg.PollInterval = *pollInterval
-	cfg.ReportInterval = *reportInterval
+	envCfg := envConfig{}
+	err := env.Parse(&envCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if envCfg.ServerAddress != "" {
+		cfg.ServerAddress = envCfg.ServerAddress
+	} else if address := os.Getenv("ADDRESS"); address != "" {
+		cfg.ServerAddress = address
+	} else {
+		cfg.ServerAddress = *serverAddress
+	}
+
+	if envCfg.PollInterval != 0 {
+		cfg.PollInterval = envCfg.PollInterval
+	} else {
+		cfg.PollInterval = *pollInterval
+	}
+
+	if envCfg.ReportInterval != 0 {
+		cfg.ReportInterval = envCfg.ReportInterval
+	} else {
+		cfg.ReportInterval = *reportInterval
+	}
 	cfg.WaitTime = 30
 
-	return cfg, nil
+	return &cfg, nil
 }
