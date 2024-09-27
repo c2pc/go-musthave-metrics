@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type IClient interface {
@@ -18,6 +19,10 @@ type Client struct {
 }
 
 func NewClient(serverAddr string) *Client {
+	if !strings.Contains(serverAddr, "http") {
+		serverAddr = "http://" + serverAddr
+	}
+
 	return &Client{
 		serverAddr: serverAddr,
 	}

@@ -2,16 +2,16 @@ package main
 
 import (
 	"fmt"
+	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
+	"log"
 	"sync"
 	"time"
 )
 
 const (
-	pollInterval   = 2 * time.Second
-	reportInterval = 10 * time.Second
-	waitTime       = 30 * time.Second
+	waitTime = 30 * time.Second
 )
 
 var (
@@ -22,15 +22,22 @@ var (
 
 func main() {
 	fmt.Println("Start metrics reporter")
+
+	cfg, err := config.Parse()
+	if err != nil {
+		log.Fatalf("failed to parse config: %v\n", err)
+		return
+	}
+
 	counterMetric = metric.NewCounterMetric()
 	gaugeMetric = metric.NewGaugeMetric()
 
-	client = cl.NewClient("http://localhost:8080")
+	client = cl.NewClient(cfg.ServerAddress)
 
-	pollTicker := time.NewTicker(pollInterval)
+	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
 	defer pollTicker.Stop()
 
-	reportTicker := time.NewTicker(reportInterval)
+	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
 	defer reportTicker.Stop()
 
 	for {
@@ -77,6 +84,7 @@ func reportMetrics() {
 			fmt.Printf("Update Counter metric: %s = %v\n", key, value)
 			err := client.UpdateMetric(counterMetric.GetName(), string(key), value)
 			if err != nil {
+				fmt.Printf("Error updating counter metric: %s = %v\n", key, err)
 				return
 			}
 		}()
@@ -89,6 +97,7 @@ func reportMetrics() {
 			fmt.Printf("Update Gauge metric: %s = %v\n", key, value)
 			err := client.UpdateMetric(gaugeMetric.GetName(), string(key), value)
 			if err != nil {
+				fmt.Printf("Error updating gauge metric: %s = %v\n", key, err)
 				return
 			}
 		}()
