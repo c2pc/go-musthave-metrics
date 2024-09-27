@@ -279,6 +279,9 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 			if tt.expectedStatus == http.StatusOK {
 				assert.Equal(t, result.Header.Get("Content-Type"), "text/html; charset=utf-8")
 			}
+
+			err = result.Body.Close()
+			require.NoError(t, err)
 		})
 	}
 }
