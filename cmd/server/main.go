@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
@@ -15,11 +16,13 @@ import (
 	"time"
 )
 
-const (
-	defaultPort = "8080"
-)
-
 func main() {
+	cfg, err := config.Parse()
+	if err != nil {
+		log.Fatalf("failed to parse config: %v\n", err)
+		return
+	}
+
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
@@ -28,13 +31,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	httpServer := server.NewServer(handlers, defaultPort)
+	httpServer := server.NewServer(handlers, cfg.Address)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
-		fmt.Printf("Starting Server on port %s\n", defaultPort)
+		fmt.Printf("Starting Server on %s\n", cfg.Address)
 		if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			fmt.Printf("Error to ListenAndServe err: %s\n", err.Error())
 			close(quit)
