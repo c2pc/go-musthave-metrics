@@ -63,7 +63,7 @@ func TestNewHandler(t *testing.T) {
 	}
 }
 
-func TestMetricUpdateHandler_HandleUpdate(t *testing.T) {
+func TestMetricHandler_HandleUpdate(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
@@ -116,7 +116,7 @@ func TestMetricUpdateHandler_HandleUpdate(t *testing.T) {
 	}
 }
 
-func TestMetricValueHandler_HandleValue(t *testing.T) {
+func TestMetricHandler_HandleValue(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
@@ -213,6 +213,72 @@ func TestMetricValueHandler_HandleValue(t *testing.T) {
 
 			err = result.Body.Close()
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMetricHandler_HandleAll(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		method         string
+		data           []string
+		expectedStatus int
+	}{
+		{"Post", http.MethodPost, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"Success", http.MethodGet, []string{"gauge/metric/1"}, http.StatusOK},
+		{"Success2", http.MethodGet, []string{"counter/metric/1"}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.data != nil {
+				for _, data := range tt.data {
+					split := strings.Split(data, "/")
+					if len(split) < 3 {
+						t.Errorf("Invalid data: %s", data)
+					}
+
+					if split[0] == "gauge" {
+						value, err := strconv.ParseFloat(split[2], 64)
+						require.NoError(t, err)
+
+						err = gaugeStorage.Set(split[1], value)
+						require.NoError(t, err)
+					} else if split[2] == "counter" {
+						value, err := strconv.ParseInt(split[2], 10, 64)
+						require.NoError(t, err)
+
+						err = counterStorage.Set(split[1], value)
+						require.NoError(t, err)
+					}
+				}
+
+			}
+
+			request := httptest.NewRequest(tt.method, "/", nil)
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if tt.expectedStatus == http.StatusOK {
+				assert.Equal(t, result.Header.Get("Content-Type"), "text/html; charset=utf-8")
+			}
 		})
 	}
 }

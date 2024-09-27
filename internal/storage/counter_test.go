@@ -3,6 +3,7 @@ package storage_test
 import (
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/stretchr/testify/assert"
+	"reflect"
 	"testing"
 )
 
@@ -227,6 +228,134 @@ func TestCounterStorage_GetString(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.Equal(t, tt.got, got)
+			}
+		})
+	}
+}
+
+func TestCounterStorage_GetAll(t *testing.T) {
+	counterStorage := storage.NewCounterStorage()
+
+	tests := []struct {
+		name  string
+		key   string
+		value int64
+		got   map[string]int64
+		set   bool
+	}{
+		{
+			name:  "Test with existing key",
+			key:   "key1",
+			value: 10,
+			got:   map[string]int64{"key1": 10},
+			set:   true,
+		},
+		{
+			name:  "Test with non-existing key",
+			key:   "key2",
+			value: 0,
+			got:   map[string]int64{"key1": 10},
+			set:   false,
+		},
+		{
+			name:  "Test with replace value",
+			key:   "key1",
+			value: 15,
+			got:   map[string]int64{"key1": 25},
+			set:   true,
+		},
+		{
+			name:  "Test with replace value2",
+			key:   "key1",
+			value: 20,
+			got:   map[string]int64{"key1": 45},
+			set:   true,
+		},
+		{
+			name:  "Test with existing key2",
+			key:   "key2",
+			value: 1,
+			got:   map[string]int64{"key1": 45, "key2": 1},
+			set:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.set {
+				err := counterStorage.Set(tt.key, tt.value)
+				assert.NoError(t, err)
+			}
+
+			got, err := counterStorage.GetAll()
+			assert.NoError(t, err)
+
+			eq := reflect.DeepEqual(tt.got, got)
+			if !eq {
+				t.Errorf("PollStats() = %v, want %v", got, tt.got)
+			}
+		})
+	}
+}
+
+func TestCounterStorage_GetAllString(t *testing.T) {
+	counterStorage := storage.NewCounterStorage()
+
+	tests := []struct {
+		name  string
+		key   string
+		value int64
+		got   map[string]string
+		set   bool
+	}{
+		{
+			name:  "Test with existing key",
+			key:   "key1",
+			value: 10,
+			got:   map[string]string{"key1": "10"},
+			set:   true,
+		},
+		{
+			name:  "Test with non-existing key",
+			key:   "key2",
+			value: 0,
+			got:   map[string]string{"key1": "10"},
+			set:   false,
+		},
+		{
+			name:  "Test with replace value",
+			key:   "key1",
+			value: 15,
+			got:   map[string]string{"key1": "25"},
+			set:   true,
+		},
+		{
+			name:  "Test with replace value2",
+			key:   "key1",
+			value: 20,
+			got:   map[string]string{"key1": "45"},
+			set:   true,
+		},
+		{
+			name:  "Test with existing key2",
+			key:   "key2",
+			value: 1,
+			got:   map[string]string{"key1": "45", "key2": "1"},
+			set:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.set {
+				err := counterStorage.Set(tt.key, tt.value)
+				assert.NoError(t, err)
+			}
+
+			got, err := counterStorage.GetAllString()
+			assert.NoError(t, err)
+
+			eq := reflect.DeepEqual(tt.got, got)
+			if !eq {
+				t.Errorf("PollStats() = %v, want %v", got, tt.got)
 			}
 		})
 	}
