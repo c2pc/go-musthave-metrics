@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/caarlos0/env/v6"
-	"log"
 	"os"
 )
 
@@ -36,7 +35,7 @@ func Parse() (*Config, error) {
 	envCfg := envConfig{}
 	err := env.Parse(&envCfg)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	if envCfg.Address != "" {
