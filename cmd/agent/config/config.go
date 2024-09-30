@@ -3,8 +3,9 @@ package config
 import (
 	"flag"
 	"fmt"
-	"github.com/caarlos0/env/v6"
 	"os"
+
+	"github.com/caarlos0/env/v6"
 )
 
 const (

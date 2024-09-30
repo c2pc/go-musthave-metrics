@@ -1,9 +1,10 @@
 package storage_test
 
 import (
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
