@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
-	cl "github.com/c2pc/go-musthave-metrics/internal/client"
-	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
+	cl "github.com/c2pc/go-musthave-metrics/internal/client"
+	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
 const (

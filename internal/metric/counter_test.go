@@ -1,9 +1,10 @@
 package metric_test
 
 import (
-	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"reflect"
 	"testing"
+
+	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
 func TestCounterMetric_GetName(t *testing.T) {

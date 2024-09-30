@@ -2,9 +2,10 @@ package handler
 
 import (
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 type Handler struct {

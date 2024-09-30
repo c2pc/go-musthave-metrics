@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
-	"github.com/c2pc/go-musthave-metrics/internal/server"
-	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/server"
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 func main() {

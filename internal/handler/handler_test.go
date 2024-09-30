@@ -2,8 +2,6 @@ package handler_test
 
 import (
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
-	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -12,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 func TestNewHandler(t *testing.T) {

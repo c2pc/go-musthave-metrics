@@ -1,10 +1,11 @@
 package storage_test
 
 import (
-	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
+
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 func TestGaugeStorage_GetName(t *testing.T) {

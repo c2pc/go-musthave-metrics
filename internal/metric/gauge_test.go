@@ -1,8 +1,9 @@
 package metric_test
 
 import (
-	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"testing"
+
+	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
 var gaugeMetricKeys = []metric.Key{
