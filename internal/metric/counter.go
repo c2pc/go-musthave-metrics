@@ -5,18 +5,18 @@ import (
 )
 
 const (
-	CounterPollCountKey Key = "PollCount"
+	CounterPollCountKey string = "PollCount"
 )
 
 type CounterMetric struct {
 	mu    *sync.Mutex
-	stats map[Key]int64
+	stats map[string]int64
 }
 
 func NewCounterMetric() *CounterMetric {
 	return &CounterMetric{
 		mu:    &sync.Mutex{},
-		stats: make(map[Key]int64),
+		stats: make(map[string]int64),
 	}
 }
 
@@ -24,7 +24,7 @@ func (m *CounterMetric) GetName() string {
 	return "counter"
 }
 
-func (m *CounterMetric) GetStats() map[Key]int64 {
+func (m *CounterMetric) GetStats() map[string]int64 {
 	return m.stats
 }
 

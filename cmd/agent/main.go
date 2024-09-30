@@ -11,13 +11,19 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
+type MetricReader[T float64 | int64] interface {
+	GetName() string
+	PollStats()
+	GetStats() map[string]T
+}
+
 const (
 	waitTime = 30 * time.Second
 )
 
 var (
-	counterMetric metric.Metric[int64]
-	gaugeMetric   metric.Metric[float64]
+	counterMetric MetricReader[int64]
+	gaugeMetric   MetricReader[float64]
 	client        cl.IClient
 )
 

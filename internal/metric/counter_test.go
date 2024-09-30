@@ -20,23 +20,23 @@ func TestCounterMetric_PollStats(t *testing.T) {
 
 	tests := []struct {
 		name string
-		want map[metric.Key]int64
+		want map[string]int64
 	}{
 		{
 			name: "first polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 1},
+			want: map[string]int64{metric.CounterPollCountKey: 1},
 		},
 		{
 			name: "second polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 2},
+			want: map[string]int64{metric.CounterPollCountKey: 2},
 		},
 		{
 			name: "third polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 3},
+			want: map[string]int64{metric.CounterPollCountKey: 3},
 		},
 		{
 			name: "fourth polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 4},
+			want: map[string]int64{metric.CounterPollCountKey: 4},
 		},
 	}
 
@@ -61,32 +61,32 @@ func TestCounterMetric_GetStats(t *testing.T) {
 
 	tests := []struct {
 		name string
-		want map[metric.Key]int64
+		want map[string]int64
 		run  bool
 	}{
 		{
 			name: "first polling",
-			want: map[metric.Key]int64{},
+			want: map[string]int64{},
 			run:  false,
 		},
 		{
 			name: "second polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 1},
+			want: map[string]int64{metric.CounterPollCountKey: 1},
 			run:  true,
 		},
 		{
 			name: "third polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 2},
+			want: map[string]int64{metric.CounterPollCountKey: 2},
 			run:  true,
 		},
 		{
 			name: "fourth polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 2},
+			want: map[string]int64{metric.CounterPollCountKey: 2},
 			run:  false,
 		},
 		{
 			name: "fifth polling",
-			want: map[metric.Key]int64{metric.CounterPollCountKey: 3},
+			want: map[string]int64{metric.CounterPollCountKey: 3},
 			run:  true,
 		},
 	}

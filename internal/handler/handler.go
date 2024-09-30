@@ -4,17 +4,25 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
-
-	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
+
+type Storage[T int64 | float64] interface {
+	GetName() string
+	Get(key string) (T, error)
+	GetString(key string) (string, error)
+	GetAll() (map[string]T, error)
+	GetAllString() (map[string]string, error)
+	Set(key string, value T) error
+	SetString(key string, value string) error
+}
 
 type Handler struct {
 	http.Handler
-	gaugeStorage   storage.Storage[float64]
-	counterStorage storage.Storage[int64]
+	gaugeStorage   Storage[float64]
+	counterStorage Storage[int64]
 }
 
-func NewHandler(gaugeStorage storage.Storage[float64], counterStorage storage.Storage[int64]) (http.Handler, error) {
+func NewHandler(gaugeStorage Storage[float64], counterStorage Storage[int64]) (http.Handler, error) {
 	if counterStorage == nil {
 		return nil, fmt.Errorf("counterStorage is nil")
 	}

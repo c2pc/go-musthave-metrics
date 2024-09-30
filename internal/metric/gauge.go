@@ -7,45 +7,45 @@ import (
 )
 
 const (
-	GaugeAllocKey         Key = "Alloc"
-	GaugeBuckHashSysKey   Key = "BuckHashSys"
-	GaugeFreesKey         Key = "Frees"
-	GaugeGCCPUFractionKey Key = "GCCPUFraction"
-	GaugeGCSysKey         Key = "GCSys"
-	GaugeHeapAllocKey     Key = "HeapAlloc"
-	GaugeHeapIdleKey      Key = "HeapIdle"
-	GaugeHeapInuseKey     Key = "HeapInuse"
-	GaugeHeapObjectsKey   Key = "HeapObjects"
-	GaugeHeapReleasedKey  Key = "HeapReleased"
-	GaugeHeapSysKey       Key = "HeapSys"
-	GaugeLastGCKey        Key = "LastGC"
-	GaugeLookupsKey       Key = "Lookups"
-	GaugeMCacheInuseKey   Key = "MCacheInuse"
-	GaugeMCacheSysKey     Key = "MCacheSys"
-	GaugeMSpanInuseKey    Key = "MSpanInuse"
-	GaugeMSpanSysKey      Key = "MSpanSys"
-	GaugeMallocsKey       Key = "Mallocs"
-	GaugeNextGCKey        Key = "NextGC"
-	GaugeNumForcedGCKey   Key = "NumForcedGC"
-	GaugeNumGCKey         Key = "NumGC"
-	GaugeOtherSysKey      Key = "OtherSys"
-	GaugePauseTotalNsKey  Key = "PauseTotalNs"
-	GaugeStackInuseKey    Key = "StackInuse"
-	GaugeStackSysKey      Key = "StackSys"
-	GaugeSysKey           Key = "Sys"
-	GaugeTotalAllocKey    Key = "TotalAlloc"
-	GaugeRandomValueKey   Key = "RandomValue"
+	GaugeAllocKey         string = "Alloc"
+	GaugeBuckHashSysKey   string = "BuckHashSys"
+	GaugeFreesKey         string = "Frees"
+	GaugeGCCPUFractionKey string = "GCCPUFraction"
+	GaugeGCSysKey         string = "GCSys"
+	GaugeHeapAllocKey     string = "HeapAlloc"
+	GaugeHeapIdleKey      string = "HeapIdle"
+	GaugeHeapInuseKey     string = "HeapInuse"
+	GaugeHeapObjectsKey   string = "HeapObjects"
+	GaugeHeapReleasedKey  string = "HeapReleased"
+	GaugeHeapSysKey       string = "HeapSys"
+	GaugeLastGCKey        string = "LastGC"
+	GaugeLookupsKey       string = "Lookups"
+	GaugeMCacheInuseKey   string = "MCacheInuse"
+	GaugeMCacheSysKey     string = "MCacheSys"
+	GaugeMSpanInuseKey    string = "MSpanInuse"
+	GaugeMSpanSysKey      string = "MSpanSys"
+	GaugeMallocsKey       string = "Mallocs"
+	GaugeNextGCKey        string = "NextGC"
+	GaugeNumForcedGCKey   string = "NumForcedGC"
+	GaugeNumGCKey         string = "NumGC"
+	GaugeOtherSysKey      string = "OtherSys"
+	GaugePauseTotalNsKey  string = "PauseTotalNs"
+	GaugeStackInuseKey    string = "StackInuse"
+	GaugeStackSysKey      string = "StackSys"
+	GaugeSysKey           string = "Sys"
+	GaugeTotalAllocKey    string = "TotalAlloc"
+	GaugeRandomValueKey   string = "RandomValue"
 )
 
 type GaugeMetric struct {
 	mu    *sync.Mutex
-	stats map[Key]float64
+	stats map[string]float64
 }
 
 func NewGaugeMetric() *GaugeMetric {
 	return &GaugeMetric{
 		mu:    &sync.Mutex{},
-		stats: make(map[Key]float64),
+		stats: make(map[string]float64),
 	}
 }
 
@@ -53,7 +53,7 @@ func (m *GaugeMetric) GetName() string {
 	return "gauge"
 }
 
-func (m *GaugeMetric) GetStats() map[Key]float64 {
+func (m *GaugeMetric) GetStats() map[string]float64 {
 	return m.stats
 }
 

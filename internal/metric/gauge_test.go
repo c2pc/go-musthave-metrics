@@ -6,7 +6,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
-var gaugeMetricKeys = []metric.Key{
+var gaugeMetricKeys = []string{
 	metric.GaugeAllocKey,
 	metric.GaugeBuckHashSysKey,
 	metric.GaugeFreesKey,

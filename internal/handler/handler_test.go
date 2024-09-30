@@ -17,8 +17,8 @@ import (
 
 func TestNewHandler(t *testing.T) {
 	type args struct {
-		gaugeStorage   storage.Storage[float64]
-		counterStorage storage.Storage[int64]
+		gaugeStorage   handler.Storage[float64]
+		counterStorage handler.Storage[int64]
 	}
 	tests := []struct {
 		name    string
