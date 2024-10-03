@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"io"
 	"net/http"
 	"os"
@@ -15,7 +16,7 @@ type Client struct {
 	serverAddr string
 }
 
-func NewClient(serverAddr string) *Client {
+func NewClient(serverAddr string) reporter.Updater {
 	if !strings.Contains(serverAddr, "http") {
 		serverAddr = "http://" + serverAddr
 	}
