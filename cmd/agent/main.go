@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +12,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
 type Reporter interface {

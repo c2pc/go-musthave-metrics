@@ -1,10 +1,11 @@
 package metric
 
 import (
-	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"math/rand"
 	"runtime"
 	"sync"
+
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
 const (

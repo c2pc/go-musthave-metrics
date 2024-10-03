@@ -3,9 +3,10 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"strconv"
 	"sync"
+
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
 )
 
 type CounterStorage struct {

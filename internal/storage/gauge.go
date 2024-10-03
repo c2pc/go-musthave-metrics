@@ -2,9 +2,10 @@ package storage
 
 import (
 	"errors"
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"strconv"
 	"sync"
+
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
 )
 
 type GaugeStorage struct {

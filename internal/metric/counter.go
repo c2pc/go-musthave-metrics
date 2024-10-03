@@ -1,8 +1,9 @@
 package metric
 
 import (
-	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"sync"
+
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
 const (
