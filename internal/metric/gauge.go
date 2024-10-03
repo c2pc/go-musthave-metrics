@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -42,7 +43,7 @@ type GaugeMetric struct {
 	stats map[string]float64
 }
 
-func NewGaugeMetric() *GaugeMetric {
+func NewGaugeMetric() reporter.MetricReader[float64] {
 	return &GaugeMetric{
 		mu:    &sync.Mutex{},
 		stats: make(map[string]float64),

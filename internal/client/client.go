@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -9,10 +10,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-type IClient interface {
-	UpdateMetric(tp string, name string, value interface{}) error
-}
 
 type Client struct {
 	serverAddr string
@@ -28,7 +25,7 @@ func NewClient(serverAddr string) *Client {
 	}
 }
 
-func (c *Client) UpdateMetric(tp string, name string, value interface{}) error {
+func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) error {
 	var url = "/update/" + tp + "/" + name
 
 	switch val := value.(type) {
@@ -42,7 +39,7 @@ func (c *Client) UpdateMetric(tp string, name string, value interface{}) error {
 
 	client := &http.Client{}
 	var body []byte
-	request, err := http.NewRequest(http.MethodPost, c.serverAddr+url, bytes.NewBuffer(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}

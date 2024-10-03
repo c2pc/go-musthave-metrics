@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"sync"
 )
 
@@ -13,7 +14,7 @@ type CounterMetric struct {
 	stats map[string]int64
 }
 
-func NewCounterMetric() *CounterMetric {
+func NewCounterMetric() reporter.MetricReader[int64] {
 	return &CounterMetric{
 		mu:    &sync.Mutex{},
 		stats: make(map[string]int64),

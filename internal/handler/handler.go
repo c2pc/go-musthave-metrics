@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Storage[T int64 | float64] interface {
+type Storager[T int64 | float64] interface {
 	GetName() string
 	Get(key string) (T, error)
 	GetString(key string) (string, error)
@@ -19,11 +19,11 @@ type Storage[T int64 | float64] interface {
 
 type Handler struct {
 	http.Handler
-	gaugeStorage   Storage[float64]
-	counterStorage Storage[int64]
+	gaugeStorage   Storager[float64]
+	counterStorage Storager[int64]
 }
 
-func NewHandler(gaugeStorage Storage[float64], counterStorage Storage[int64]) (http.Handler, error) {
+func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) (http.Handler, error) {
 	if counterStorage == nil {
 		return nil, fmt.Errorf("counterStorage is nil")
 	}

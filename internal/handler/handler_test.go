@@ -2,8 +2,6 @@ package handler_test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,14 +9,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 func TestNewHandler(t *testing.T) {
 	type args struct {
-		gaugeStorage   handler.Storage[float64]
-		counterStorage handler.Storage[int64]
+		gaugeStorage   handler.Storager[float64]
+		counterStorage handler.Storager[int64]
 	}
 	tests := []struct {
 		name    string

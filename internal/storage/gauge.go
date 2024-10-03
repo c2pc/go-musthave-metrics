@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"strconv"
 	"sync"
 )
@@ -11,7 +12,7 @@ type GaugeStorage struct {
 	storage map[string]float64
 }
 
-func NewGaugeStorage() *GaugeStorage {
+func NewGaugeStorage() handler.Storager[float64] {
 	return &GaugeStorage{
 		storage: make(map[string]float64),
 	}

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"log"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
@@ -11,24 +15,13 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 )
 
-type MetricReader[T float64 | int64] interface {
-	GetName() string
-	PollStats()
-	GetStats() map[string]T
+type Reporter interface {
+	Run(context.Context)
 }
 
-const (
-	waitTime = 30 * time.Second
-)
-
-var (
-	counterMetric MetricReader[int64]
-	gaugeMetric   MetricReader[float64]
-	client        cl.IClient
-)
-
 func main() {
-	fmt.Println("Start metrics reporter")
+	fmt.Println("Starting metrics reporter")
+	defer fmt.Println("Stopping metrics reporter")
 
 	cfg, err := config.Parse()
 	if err != nil {
@@ -36,81 +29,30 @@ func main() {
 		return
 	}
 
-	counterMetric = metric.NewCounterMetric()
-	gaugeMetric = metric.NewGaugeMetric()
+	counterMetric := metric.NewCounterMetric()
+	gaugeMetric := metric.NewGaugeMetric()
 
-	client = cl.NewClient(cfg.ServerAddress)
+	client := cl.NewClient(cfg.ServerAddress)
 
-	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
-	defer pollTicker.Stop()
+	var report Reporter = reporter.New(client, reporter.Timer{
+		PollInterval:   cfg.PollInterval,
+		ReportInterval: cfg.ReportInterval,
+	}, counterMetric, gaugeMetric)
 
-	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
-	defer reportTicker.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.WaitTime)*time.Second)
+	defer cancel()
+
+	go report.Run(ctx)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	for {
 		select {
-		case <-pollTicker.C:
-			pollMetrics()
-		case <-reportTicker.C:
-			reportMetrics()
-		case <-time.After(waitTime):
-			fmt.Println("Finish metrics reporter")
+		case <-ctx.Done():
+			return
+		case <-quit:
 			return
 		}
 	}
-}
-
-func pollMetrics() {
-	fmt.Println("Start polling metrics...")
-	waitGroup := sync.WaitGroup{}
-	waitGroup.Add(2)
-
-	go func() {
-		defer waitGroup.Done()
-		counterMetric.PollStats()
-	}()
-
-	go func() {
-		defer waitGroup.Done()
-		gaugeMetric.PollStats()
-	}()
-
-	waitGroup.Wait()
-
-	fmt.Println("Finish polling metrics...")
-}
-
-func reportMetrics() {
-	fmt.Println("Start reporting metrics...")
-	waitGroup := sync.WaitGroup{}
-
-	for key, value := range counterMetric.GetStats() {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			fmt.Printf("Update Counter metric: %s = %v\n", key, value)
-			err := client.UpdateMetric(counterMetric.GetName(), string(key), value)
-			if err != nil {
-				fmt.Printf("Error updating counter metric: %s = %v\n", key, err)
-				return
-			}
-		}()
-	}
-
-	for key, value := range gaugeMetric.GetStats() {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			fmt.Printf("Update Gauge metric: %s = %v\n", key, value)
-			err := client.UpdateMetric(gaugeMetric.GetName(), string(key), value)
-			if err != nil {
-				fmt.Printf("Error updating gauge metric: %s = %v\n", key, err)
-				return
-			}
-		}()
-	}
-
-	waitGroup.Wait()
-
-	fmt.Println("Finish reporting metrics...")
 }

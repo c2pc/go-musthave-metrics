@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"strconv"
 	"sync"
 )
@@ -12,7 +13,7 @@ type CounterStorage struct {
 	storage map[string]int64
 }
 
-func NewCounterStorage() *CounterStorage {
+func NewCounterStorage() handler.Storager[int64] {
 	return &CounterStorage{
 		storage: make(map[string]int64),
 	}
