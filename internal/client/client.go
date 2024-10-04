@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
 type Client struct {
