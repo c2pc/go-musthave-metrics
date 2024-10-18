@@ -13,6 +13,7 @@ import (
 
 	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
@@ -26,6 +27,12 @@ func main() {
 
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
+
+	err = logger.Initialize("info")
+	if err != nil {
+		log.Fatalf("failed to initialize logger: %v\n", err)
+	}
+	defer logger.Log.Sync()
 
 	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
 	if err != nil {
