@@ -16,7 +16,7 @@ const (
 
 var (
 	serverAddress  = flag.String("a", defaultServerAddress, "The Address of the server")
-	pollInterval   = flag.Int("p", defaultPollInterval, "The interval between reports in seconds")
+	pollInterval   = flag.Int("p", defaultPollInterval, "The interval between polls in seconds")
 	reportInterval = flag.Int("r", defaultReportInterval, "The interval between reports in seconds")
 )
 

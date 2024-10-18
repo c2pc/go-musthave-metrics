@@ -3,8 +3,12 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Storager[T int64 | float64] interface {
@@ -51,7 +55,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) 
 }
 
 func (h *Handler) Init(engine *gin.Engine) {
-	api := engine.Group("")
+	api := engine.Group("", h.withLogger())
 	{
 		api.GET("/", h.handleHTML)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
@@ -62,49 +66,39 @@ func (h *Handler) Init(engine *gin.Engine) {
 func (h *Handler) handleUpdate(c *gin.Context) {
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
-		fmt.Println("metric type is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
 	var metricName string
 	if metricName = c.Param("name"); metricName == "" {
-		fmt.Println("metric name is empty")
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	var metricValue string
 	if metricValue = c.Param("value"); metricValue == "" {
-		fmt.Println("metric value is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println("Request ", metricType, metricName, metricValue)
-
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		if err := h.gaugeStorage.SetString(metricName, metricValue); err != nil {
-			fmt.Println("could not store metric value", err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
 
 	case h.counterStorage.GetName():
 		if err := h.counterStorage.SetString(metricName, metricValue); err != nil {
-			fmt.Println("could not store metric value", err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
 
 	default:
-		fmt.Println("unknown metric type")
 		c.Status(http.StatusBadRequest)
 		return
 	}
-
-	fmt.Println("Success ", metricType, metricName, metricValue)
 
 	c.Status(http.StatusOK)
 }
@@ -112,25 +106,20 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 func (h *Handler) handleValue(c *gin.Context) {
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
-		fmt.Println("metric type is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
 	var metricName string
 	if metricName = c.Param("name"); metricName == "" {
-		fmt.Println("metric name is empty")
 		c.Status(http.StatusNotFound)
 		return
 	}
-
-	fmt.Println("Request ", metricType, metricName)
 
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		value, err := h.gaugeStorage.GetString(metricName)
 		if err != nil {
-			fmt.Println("not found store metric value", err)
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -139,14 +128,12 @@ func (h *Handler) handleValue(c *gin.Context) {
 	case h.counterStorage.GetName():
 		value, err := h.counterStorage.GetString(metricName)
 		if err != nil {
-			fmt.Println("not found metric value", err)
 			c.Status(http.StatusNotFound)
 			return
 		}
 		c.String(http.StatusOK, value)
 		return
 	default:
-		fmt.Println("unknown metric type")
 		c.Status(http.StatusBadRequest)
 		return
 	}
@@ -155,14 +142,12 @@ func (h *Handler) handleValue(c *gin.Context) {
 func (h *Handler) handleHTML(c *gin.Context) {
 	gaugesStats, err := h.gaugeStorage.GetAllString()
 	if err != nil {
-		fmt.Println("could not get gauge stats", err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	counterStats, err := h.counterStorage.GetAllString()
 	if err != nil {
-		fmt.Println("could not get counter stats", err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -201,6 +186,24 @@ func (h *Handler) handleHTML(c *gin.Context) {
 	counterView := h.mapToHTML(counterStats)
 
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(tmpl, gaugesView, counterView)))
+}
+
+func (h *Handler) withLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+
+		fields := []zapcore.Field{
+			zap.Time("start", start),
+			zap.String("latency", time.Since(start).String()),
+			zap.String("method", c.Request.Method),
+			zap.String("uri", c.Request.RequestURI),
+			zap.Int("status", c.Writer.Status()),
+			zap.String("client_ip", c.ClientIP()),
+		}
+
+		logger.Log.Info("NEW REQUEST", fields...)
+	}
 }
 
 func (h *Handler) mapToHTML(m map[string]string) string {
