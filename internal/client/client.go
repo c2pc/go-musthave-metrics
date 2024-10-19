@@ -3,13 +3,14 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
@@ -28,24 +29,31 @@ func NewClient(serverAddr string) reporter.Updater {
 }
 
 func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) error {
-	var url = "/update/" + tp + "/" + name
+	metricRequest := model.Metrics{
+		ID:    name,
+		MType: tp,
+	}
 
 	switch val := value.(type) {
 	case int64:
-		url += "/" + strconv.FormatInt(val, 10)
+		metricRequest.Delta = &val
 	case float64:
-		url += "/" + strconv.FormatFloat(val, 'f', -1, 64)
+		metricRequest.Value = &val
 	default:
 		return errors.New("invalid metric value type")
 	}
 
-	client := &http.Client{}
-	var body []byte
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+url, bytes.NewBuffer(body))
+	body, err := json.Marshal(metricRequest)
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "text/plain")
+
+	client := &http.Client{}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
 		return err

@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -58,8 +61,10 @@ func (h *Handler) Init(engine *gin.Engine) {
 	api := engine.Group("", h.withLogger())
 	{
 		api.GET("/", h.handleHTML)
+		api.POST("/update", h.handleUpdateJSON)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
 		api.GET("/value/:type/:name", h.handleValue)
+		api.GET("/value", h.handleValueJSON)
 	}
 }
 
@@ -103,6 +108,61 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (h *Handler) handleUpdateJSON(c *gin.Context) {
+	var metric model.Metrics
+	message, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(message, &metric)
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	if metric.MType == "" {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	if metric.ID == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	switch metric.MType {
+	case h.gaugeStorage.GetName():
+		if metric.Value == nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		if err := h.gaugeStorage.Set(metric.ID, *metric.Value); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+	case h.counterStorage.GetName():
+		if metric.Delta == nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		if err := h.counterStorage.Set(metric.ID, *metric.Delta); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+	default:
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
 func (h *Handler) handleValue(c *gin.Context) {
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
@@ -125,6 +185,7 @@ func (h *Handler) handleValue(c *gin.Context) {
 		}
 		c.String(http.StatusOK, value)
 		return
+
 	case h.counterStorage.GetName():
 		value, err := h.counterStorage.GetString(metricName)
 		if err != nil {
@@ -133,10 +194,60 @@ func (h *Handler) handleValue(c *gin.Context) {
 		}
 		c.String(http.StatusOK, value)
 		return
+
 	default:
 		c.Status(http.StatusBadRequest)
 		return
 	}
+}
+
+func (h *Handler) handleValueJSON(c *gin.Context) {
+	var metric model.Metrics
+	message, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(message, &metric)
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	if metric.MType == "" {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	if metric.ID == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	switch metric.MType {
+	case h.gaugeStorage.GetName():
+		value, err := h.gaugeStorage.Get(metric.ID)
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		metric.Value = &value
+
+	case h.counterStorage.GetName():
+		value, err := h.counterStorage.Get(metric.ID)
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		metric.Delta = &value
+
+	default:
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	c.JSON(http.StatusOK, metric)
 }
 
 func (h *Handler) handleHTML(c *gin.Context) {
