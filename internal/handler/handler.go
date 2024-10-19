@@ -64,7 +64,7 @@ func (h *Handler) Init(engine *gin.Engine) {
 		api.POST("/update/", h.handleUpdateJSON)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
 		api.GET("/value/:type/:name", h.handleValue)
-		api.GET("/value/", h.handleValueJSON)
+		api.POST("/value/", h.handleValueJSON)
 	}
 }
 

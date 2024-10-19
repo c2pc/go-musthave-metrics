@@ -49,7 +49,7 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 	}
 
 	client := &http.Client{}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update", bytes.NewBuffer(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
