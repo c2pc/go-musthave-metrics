@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/c2pc/go-musthave-metrics/internal/model"
@@ -60,9 +58,11 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 	}
 	defer response.Body.Close()
 
-	_, err = io.Copy(os.Stdout, response.Body)
-	if err != nil {
-		return err
+	if response.StatusCode == http.StatusOK {
+		var metricRes model.Metrics
+		if err := json.NewDecoder(response.Body).Decode(&metricRes); err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,8 +10,10 @@ import (
 
 	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
+	"go.uber.org/zap"
 )
 
 type Reporter interface {
@@ -20,12 +21,18 @@ type Reporter interface {
 }
 
 func main() {
-	fmt.Println("Starting metrics reporter")
-	defer fmt.Println("Stopping metrics reporter")
+	err := logger.Initialize("info")
+	if err != nil {
+		log.Fatalf("failed to initialize logger: %v\n", err)
+	}
+	defer logger.Log.Sync()
+
+	logger.Log.Info("Starting metrics reporter")
+	defer logger.Log.Info("Stopping metrics reporter")
 
 	cfg, err := config.Parse()
 	if err != nil {
-		log.Fatalf("failed to parse config: %v\n", err)
+		logger.Log.Fatal("failed to parse config", zap.Error(err))
 		return
 	}
 
