@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,27 +15,28 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
+	"go.uber.org/zap"
 )
 
 func main() {
+	err := logger.Initialize("info")
+	if err != nil {
+		log.Fatalf("failed to initialize logger: %v\n", err)
+	}
+	defer logger.Log.Sync()
+
 	cfg, err := config.Parse()
 	if err != nil {
-		log.Fatalf("failed to parse config: %v\n", err)
+		logger.Log.Fatal("failed to parse config", zap.Error(err))
 		return
 	}
 
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	err = logger.Initialize("info")
-	if err != nil {
-		log.Fatalf("failed to initialize logger: %v\n", err)
-	}
-	defer logger.Log.Sync()
-
 	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
 	if err != nil {
-		log.Fatal(err)
+		logger.Log.Fatal("failed to init handlers", zap.Error(err))
 	}
 
 	httpServer := server.NewServer(handlers, cfg.Address)
@@ -45,9 +45,9 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
-		fmt.Printf("Starting Server on %s\n", cfg.Address)
+		logger.Log.Info("Starting Server", zap.String("address", cfg.Address))
 		if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			fmt.Printf("Error to ListenAndServe err: %s\n", err.Error())
+			logger.Log.Info("Error to ListenAndServe", zap.Error(err))
 			close(quit)
 		}
 	}()
@@ -59,8 +59,8 @@ func main() {
 	defer shutdown()
 
 	if err := httpServer.Stop(ctx); err != nil {
-		fmt.Printf("Failed to Stop Server: %v\n", err)
+		logger.Log.Info("Failed to Stop Server", zap.Error(err))
 	}
 
-	fmt.Println("Shutting Down Server")
+	logger.Log.Info("Shutting Down Server")
 }
