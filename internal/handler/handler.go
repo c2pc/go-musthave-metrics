@@ -61,10 +61,10 @@ func (h *Handler) Init(engine *gin.Engine) {
 	api := engine.Group("", h.withLogger())
 	{
 		api.GET("/", h.handleHTML)
-		api.POST("/update", h.handleUpdateJSON)
+		api.POST("/update/", h.handleUpdateJSON)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
 		api.GET("/value/:type/:name", h.handleValue)
-		api.GET("/value", h.handleValueJSON)
+		api.GET("/value/", h.handleValueJSON)
 	}
 }
 

@@ -180,7 +180,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 				body = bytes.NewReader(out)
 			}
 
-			request := httptest.NewRequest(tt.method, "/update", body)
+			request := httptest.NewRequest(tt.method, "/update/", body)
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -398,7 +398,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 				body = bytes.NewReader(out)
 			}
 
-			request := httptest.NewRequest(tt.method, "/value", body)
+			request := httptest.NewRequest(tt.method, "/value/", body)
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
