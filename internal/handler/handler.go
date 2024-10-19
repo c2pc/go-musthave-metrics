@@ -132,6 +132,8 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		return
 	}
 
+	var metricRequest *model.Metrics
+
 	switch metric.MType {
 	case h.gaugeStorage.GetName():
 		if metric.Value == nil {
@@ -142,6 +144,18 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		if err := h.gaugeStorage.Set(metric.ID, *metric.Value); err != nil {
 			c.Status(http.StatusBadRequest)
 			return
+		}
+
+		newValue, err := h.gaugeStorage.Get(metric.ID)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		metricRequest = &model.Metrics{
+			MType: h.gaugeStorage.GetName(),
+			ID:    metric.ID,
+			Value: &newValue,
 		}
 
 	case h.counterStorage.GetName():
@@ -155,12 +169,24 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
+		newValue, err := h.counterStorage.Get(metric.ID)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		metricRequest = &model.Metrics{
+			MType: h.counterStorage.GetName(),
+			ID:    metric.ID,
+			Delta: &newValue,
+		}
+
 	default:
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusOK, metricRequest)
 }
 
 func (h *Handler) handleValue(c *gin.Context) {
