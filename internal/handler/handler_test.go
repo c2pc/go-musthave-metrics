@@ -1,14 +1,18 @@
 package handler_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,6 +122,110 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	var defaultDelta, defaultDelta2 int64 = 10, -6
+	var defaultValue, defaultValue2 float64 = 10, 0.5
+
+	type data struct {
+		ID    interface{} `json:"id"`
+		MType interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           *data
+		expectedStatus int
+	}{
+		{"Get", http.MethodGet, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
+		{"Empty type", http.MethodPost, &data{ID: "id", MType: "", Delta: defaultDelta, Value: defaultValue}, http.StatusBadRequest},
+		{"Empty name", http.MethodPost, &data{ID: "", MType: "gauge", Delta: defaultDelta2, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name2", http.MethodPost, &data{ID: "", MType: "counter", Delta: defaultDelta, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name3", http.MethodPost, &data{ID: "", MType: "gauge", Delta: defaultDelta2, Value: defaultValue}, http.StatusNotFound},
+		{"Empty value", http.MethodPost, &data{ID: "id1", MType: "counter", Delta: nil, Value: nil}, http.StatusBadRequest},
+		{"Empty value2", http.MethodPost, &data{ID: "id2", MType: "gauge", Delta: nil, Value: nil}, http.StatusBadRequest},
+
+		{"Invalid type", http.MethodPost, &data{ID: "id3", MType: "invalid", Delta: defaultDelta2, Value: defaultValue2}, http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, &data{ID: "id3", MType: "gauge", Value: "invalid"}, http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, &data{ID: "id3", MType: "counter", Delta: "invalid"}, http.StatusBadRequest},
+
+		{"Success Gauge", http.MethodPost, &data{ID: "id2", MType: "gauge", Value: defaultValue2}, http.StatusOK},
+		{"Success Counter", http.MethodPost, &data{ID: "id3", MType: "counter", Delta: defaultDelta2}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/update", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			err := result.Body.Close()
+			require.NoError(t, err)
+
+			if tt.expectedStatus == http.StatusOK {
+				res, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, tt.data.ID, metrics.ID)
+				assert.Equal(t, tt.data.MType, metrics.MType)
+
+				switch tt.data.MType {
+				case gaugeStorage.GetName():
+					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.data.Value, value)
+					assert.NotEmpty(t, *metrics.Value)
+					assert.Equal(t, tt.data.Value, *metrics.Value)
+				case counterStorage.GetName():
+					value, err := counterStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.data.Delta, value)
+					assert.NotEmpty(t, *metrics.Delta)
+					assert.Equal(t, tt.data.Delta, *metrics.Delta)
+
+				default:
+					assert.Fail(t, "unknown metrics type")
+				}
+			}
+
+		})
+	}
+}
+
 func TestMetricHandler_HandleValue(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
@@ -211,6 +319,122 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 					assert.Equal(t, got, rValue)
 				}
 
+			}
+
+			err = result.Body.Close()
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMetricHandler_HandleValueJSON(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	var defaultDelta int64 = -6
+	var defaultValue = 0.5
+
+	type data struct {
+		ID    interface{} `json:"id"`
+		MType interface{} `json:"type"`
+	}
+	type expectedData struct {
+		ID    interface{} `json:"id"`
+		MType interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           *data
+		expectedStatus int
+		expectedBody   *expectedData
+	}{
+		{"Post", http.MethodPost, nil, http.StatusNotFound, nil},
+		{"Put", http.MethodPut, nil, http.StatusNotFound, nil},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound, nil},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound, nil},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound, nil},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound, nil},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound, nil},
+		{"Head", http.MethodHead, nil, http.StatusNotFound, nil},
+
+		{"Empty body", http.MethodGet, nil, http.StatusBadRequest, nil},
+		{"Empty type", http.MethodGet, &data{ID: "id", MType: ""}, http.StatusBadRequest, nil},
+		{"Empty name", http.MethodGet, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Empty name2", http.MethodGet, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
+
+		{"Invalid type", http.MethodGet, &data{ID: "id3", MType: "invalid"}, http.StatusBadRequest, nil},
+
+		{"Not found Gauge", http.MethodGet, &data{ID: "id4", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Not found Counter", http.MethodGet, &data{ID: "id5", MType: "counter"}, http.StatusNotFound, nil},
+
+		{"Success Gauge", http.MethodGet, &data{ID: "id41", MType: "gauge"}, http.StatusOK, &expectedData{ID: "id41", MType: "gauge", Value: defaultValue}},
+		{"Success Counter", http.MethodGet, &data{ID: "id42", MType: "counter"}, http.StatusOK, &expectedData{ID: "id42", MType: "counter", Delta: defaultDelta}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expectedBody != nil {
+				if tt.data.MType == "gauge" {
+					err = gaugeStorage.Set(tt.data.ID.(string), tt.expectedBody.Value.(float64))
+					require.NoError(t, err)
+				} else if tt.data.MType == "counter" {
+					err = counterStorage.Set(tt.data.ID.(string), tt.expectedBody.Delta.(int64))
+					require.NoError(t, err)
+				}
+			}
+
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/value", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if tt.expectedBody != nil {
+				res, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, tt.data.ID, metrics.ID)
+				assert.Equal(t, tt.data.MType, metrics.MType)
+
+				switch tt.data.MType {
+				case gaugeStorage.GetName():
+					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectedBody.Value, value)
+					assert.NotEmpty(t, *metrics.Value)
+					assert.Equal(t, tt.expectedBody.Value, *metrics.Value)
+				case counterStorage.GetName():
+					value, err := counterStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectedBody.Delta, value)
+					assert.NotEmpty(t, *metrics.Delta)
+					assert.Equal(t, tt.expectedBody.Delta, *metrics.Delta)
+
+				default:
+					assert.Fail(t, "unknown metrics type")
+				}
 			}
 
 			err = result.Body.Close()
