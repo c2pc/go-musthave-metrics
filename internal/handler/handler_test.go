@@ -355,7 +355,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		expectedStatus int
 		expectedBody   *expectedData
 	}{
-		{"Post", http.MethodPost, nil, http.StatusNotFound, nil},
+		{"Post", http.MethodGet, nil, http.StatusNotFound, nil},
 		{"Put", http.MethodPut, nil, http.StatusNotFound, nil},
 		{"Patch", http.MethodPatch, nil, http.StatusNotFound, nil},
 		{"Delete", http.MethodDelete, nil, http.StatusNotFound, nil},
@@ -364,18 +364,18 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		{"Trace", http.MethodTrace, nil, http.StatusNotFound, nil},
 		{"Head", http.MethodHead, nil, http.StatusNotFound, nil},
 
-		{"Empty body", http.MethodGet, nil, http.StatusBadRequest, nil},
-		{"Empty type", http.MethodGet, &data{ID: "id", MType: ""}, http.StatusBadRequest, nil},
-		{"Empty name", http.MethodGet, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
-		{"Empty name2", http.MethodGet, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest, nil},
+		{"Empty type", http.MethodPost, &data{ID: "id", MType: ""}, http.StatusBadRequest, nil},
+		{"Empty name", http.MethodPost, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Empty name2", http.MethodPost, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
 
-		{"Invalid type", http.MethodGet, &data{ID: "id3", MType: "invalid"}, http.StatusBadRequest, nil},
+		{"Invalid type", http.MethodPost, &data{ID: "id3", MType: "invalid"}, http.StatusBadRequest, nil},
 
-		{"Not found Gauge", http.MethodGet, &data{ID: "id4", MType: "gauge"}, http.StatusNotFound, nil},
-		{"Not found Counter", http.MethodGet, &data{ID: "id5", MType: "counter"}, http.StatusNotFound, nil},
+		{"Not found Gauge", http.MethodPost, &data{ID: "id4", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Not found Counter", http.MethodPost, &data{ID: "id5", MType: "counter"}, http.StatusNotFound, nil},
 
-		{"Success Gauge", http.MethodGet, &data{ID: "id41", MType: "gauge"}, http.StatusOK, &expectedData{ID: "id41", MType: "gauge", Value: defaultValue}},
-		{"Success Counter", http.MethodGet, &data{ID: "id42", MType: "counter"}, http.StatusOK, &expectedData{ID: "id42", MType: "counter", Delta: defaultDelta}},
+		{"Success Gauge", http.MethodPost, &data{ID: "id41", MType: "gauge"}, http.StatusOK, &expectedData{ID: "id41", MType: "gauge", Value: defaultValue}},
+		{"Success Counter", http.MethodPost, &data{ID: "id42", MType: "counter"}, http.StatusOK, &expectedData{ID: "id42", MType: "counter", Delta: defaultDelta}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
