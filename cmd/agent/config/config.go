@@ -16,7 +16,7 @@ const (
 
 var (
 	serverAddress  = flag.String("a", defaultServerAddress, "The Address of the server")
-	pollInterval   = flag.Int("p", defaultPollInterval, "The interval between reports in seconds")
+	pollInterval   = flag.Int("p", defaultPollInterval, "The interval between polls in seconds")
 	reportInterval = flag.Int("r", defaultReportInterval, "The interval between reports in seconds")
 )
 
@@ -66,7 +66,7 @@ func Parse() (*Config, error) {
 	} else {
 		cfg.ReportInterval = *reportInterval
 	}
-	cfg.WaitTime = 30
+	cfg.WaitTime = 60
 
 	return &cfg, nil
 }
