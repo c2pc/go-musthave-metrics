@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -325,9 +326,28 @@ func (h *Handler) handleHTML(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(tmpl, gaugesView, counterView)))
 }
 
+type bodyLogWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w bodyLogWriter) Write(b []byte) (int, error) {
+	w.body.Write(b)
+	return w.ResponseWriter.Write(b)
+}
+
 func (h *Handler) withLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
+
+		var buf bytes.Buffer
+		blw := &bodyLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
+		c.Writer = blw
+
+		tee := io.TeeReader(c.Request.Body, &buf)
+		body, _ := io.ReadAll(tee)
+		c.Request.Body = io.NopCloser(&buf)
+
 		c.Next()
 
 		fields := []zapcore.Field{
@@ -337,6 +357,8 @@ func (h *Handler) withLogger() gin.HandlerFunc {
 			zap.String("uri", c.Request.RequestURI),
 			zap.Int("status", c.Writer.Status()),
 			zap.String("client_ip", c.ClientIP()),
+			zap.String("request", string(body)),
+			zap.String("response", blw.body.String()),
 		}
 
 		logger.Log.Info("NEW REQUEST", fields...)

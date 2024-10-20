@@ -66,7 +66,7 @@ func Parse() (*Config, error) {
 	} else {
 		cfg.ReportInterval = *reportInterval
 	}
-	cfg.WaitTime = 30
+	cfg.WaitTime = 60
 
 	return &cfg, nil
 }

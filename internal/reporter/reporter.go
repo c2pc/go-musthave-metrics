@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"go.uber.org/zap"
 )
 
 type Updater interface {
-	UpdateMetric(ctx context.Context, tp string, name string, value interface{}) error
+	UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error)
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -87,12 +88,12 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			logger.Log.Info("Update Counter metric", zap.String("key", key), zap.Any("value", value))
-			err := r.client.UpdateMetric(ctx, r.counterMetric.GetName(), key, value)
+			metric, err := r.client.UpdateMetric(ctx, r.counterMetric.GetName(), key, value)
 			if err != nil {
 				logger.Log.Info("Error updating counter metric", zap.String("key", key), zap.Error(err))
 				return
 			}
+			logger.Log.Info("Update Counter metric", zap.String("key", key), zap.Any("value", value), zap.Any("response", metric))
 		}()
 	}
 
@@ -100,12 +101,12 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			logger.Log.Info("Update Gauge metric", zap.String("key", key), zap.Any("value", value))
-			err := r.client.UpdateMetric(ctx, r.gaugeMetric.GetName(), key, value)
+			metric, err := r.client.UpdateMetric(ctx, r.gaugeMetric.GetName(), key, value)
 			if err != nil {
 				logger.Log.Info("Error updating gauge metric", zap.String("key", key), zap.Error(err))
 				return
 			}
+			logger.Log.Info("Update Gauge metric", zap.String("key", key), zap.Any("value", value), zap.Any("response", metric))
 		}()
 	}
 

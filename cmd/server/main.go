@@ -25,6 +25,8 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
+	logger.Log.Info("Starting Server APP")
+
 	cfg, err := config.Parse()
 	if err != nil {
 		logger.Log.Fatal("failed to parse config", zap.Error(err))
