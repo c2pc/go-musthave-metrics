@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
@@ -46,7 +45,7 @@ func main() {
 		ReportInterval: cfg.ReportInterval,
 	}, counterMetric, gaugeMetric)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.WaitTime)*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go report.Run(ctx)

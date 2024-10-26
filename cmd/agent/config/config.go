@@ -30,7 +30,6 @@ type Config struct {
 	ServerAddress  string
 	PollInterval   int
 	ReportInterval int
-	WaitTime       int
 }
 
 func Parse() (*Config, error) {
@@ -66,7 +65,6 @@ func Parse() (*Config, error) {
 	} else {
 		cfg.ReportInterval = *reportInterval
 	}
-	cfg.WaitTime = 100
 
 	return &cfg, nil
 }
