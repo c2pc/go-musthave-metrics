@@ -17,10 +17,9 @@ type gzipResponseWriter struct {
 }
 
 func (grw *gzipResponseWriter) Write(data []byte) (int, error) {
-	return grw.Writer.Write(data) // Запись данных в gzip writer
+	return grw.Writer.Write(data)
 }
 
-// GzipDecompressor распаковывает входящие gzip-данные
 func GzipDecompressor(c *gin.Context) {
 	if c.Request.Header.Get("Content-Encoding") == "gzip" {
 		gzipData, err := io.ReadAll(c.Request.Body)
@@ -45,17 +44,15 @@ func GzipDecompressor(c *gin.Context) {
 			return
 		}
 
-		// Устанавливаем новую Body
 		c.Request.Body = io.NopCloser(bytes.NewReader(decompressedData))
 		c.Request.ContentLength = int64(len(decompressedData))
-		c.Request.Header.Set("Content-Encoding", "")                                   // Убираем gzip из заголовков, если они есть
-		c.Request.Header.Set("Content-Type", http.DetectContentType(decompressedData)) // Устанавливаем правильный Content-Type
+		c.Request.Header.Set("Content-Encoding", "")
+		c.Request.Header.Set("Content-Type", http.DetectContentType(decompressedData))
 	}
 
 	c.Next()
 }
 
-// GzipCompressor сжимает выходящие данные в gzip
 func GzipCompressor(c *gin.Context) {
 	acceptEncoding := c.Request.Header.Get("Accept-Encoding")
 	if strings.Contains(acceptEncoding, "gzip") {

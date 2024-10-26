@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -66,12 +65,12 @@ func Parse() (*Config, error) {
 	if envCfg.StoreInterval != "" {
 		cfg.StoreInterval, err = strconv.ParseInt(envCfg.StoreInterval, 10, 64)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to parse STORE_INTERVAL: %s", err))
+			return nil, fmt.Errorf("failed to parse STORE_INTERVAL: %s", err)
 		}
 	} else if v := os.Getenv("STORE_INTERVAL"); v != "" {
 		cfg.StoreInterval, err = strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to parse STORE_INTERVAL: %s", err))
+			return nil, fmt.Errorf("failed to parse STORE_INTERVAL: %s", err)
 		}
 	} else {
 		cfg.StoreInterval = *storeInterval
@@ -90,12 +89,12 @@ func Parse() (*Config, error) {
 	if envCfg.Restore != "" {
 		cfg.Restore, err = strconv.ParseBool(envCfg.Restore)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to parse RESTORE: %s", err))
+			return nil, fmt.Errorf("failed to parse RESTORE: %s", err)
 		}
 	} else if v := os.Getenv("ADDRESS"); v != "" {
 		cfg.Restore, err = strconv.ParseBool(v)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to parse RESTORE: %s", err))
+			return nil, fmt.Errorf("failed to parse RESTORE: %s", err)
 		}
 	} else {
 		cfg.Restore = *restore
