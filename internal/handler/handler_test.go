@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -226,6 +227,105 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		compress       bool
+		decompress     bool
+		expectedStatus int
+	}{
+		{"Compress", 1, true, false, http.StatusOK},
+		{"Decompress", 2, false, true, http.StatusOK},
+		{"All", 3, true, true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data = struct {
+				ID    string  `json:"id"`
+				MType string  `json:"type"`
+				Delta int64   `json:"delta,omitempty"`
+				Value float64 `json:"value,omitempty"`
+			}{
+				ID:    "1",
+				MType: gaugeStorage.GetName(),
+				Delta: 1,
+				Value: tt.value,
+			}
+
+			buf := new(bytes.Buffer)
+
+			out, err := json.Marshal(data)
+			require.NoError(t, err)
+
+			if tt.compress {
+				zb := gzip.NewWriter(buf)
+				defer zb.Close() // Закрываем gzip.Writer в конце функции
+
+				_, err = zb.Write(out)
+				require.NoError(t, err)
+
+				err = zb.Close() // Обязательно закрываем после записи
+				require.NoError(t, err)
+			} else {
+				buf.Write(out) // Если не сжимаем, просто добавляем данные
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/update/", buf)
+			request.Header.Set("Content-Type", "application/json")
+			if tt.compress {
+				request.Header.Set("Content-Encoding", "gzip")
+			}
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				var res []byte
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					res, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				} else {
+					res, err = io.ReadAll(result.Body)
+					require.NoError(t, err)
+				}
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, data.ID, metrics.ID)
+				assert.Equal(t, data.MType, metrics.MType)
+
+				value, err := gaugeStorage.Get(data.ID)
+				require.NoError(t, err)
+				assert.Equal(t, data.Value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, data.Value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
 func TestMetricHandler_HandleValue(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
@@ -443,6 +543,103 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		compress       bool
+		decompress     bool
+		expectedStatus int
+	}{
+		{"Compress", 1, true, false, http.StatusOK},
+		{"Decompress", 2, false, true, http.StatusOK},
+		{"All", 3, true, true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data = struct {
+				ID    string `json:"id"`
+				MType string `json:"type"`
+			}{
+				ID:    "1",
+				MType: gaugeStorage.GetName(),
+			}
+
+			buf := new(bytes.Buffer)
+
+			err = gaugeStorage.Set(data.ID, tt.value)
+			require.NoError(t, err)
+
+			out, err := json.Marshal(data)
+			require.NoError(t, err)
+
+			if tt.compress {
+				zb := gzip.NewWriter(buf)
+				defer zb.Close() // Закрываем gzip.Writer в конце функции
+
+				_, err = zb.Write(out)
+				require.NoError(t, err)
+
+				err = zb.Close() // Обязательно закрываем после записи
+				require.NoError(t, err)
+			} else {
+				buf.Write(out) // Если не сжимаем, просто добавляем данные
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/value/", buf)
+			request.Header.Set("Content-Type", "application/json")
+			if tt.compress {
+				request.Header.Set("Content-Encoding", "gzip")
+			}
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				var res []byte
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					res, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				} else {
+					res, err = io.ReadAll(result.Body)
+					require.NoError(t, err)
+				}
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, data.ID, metrics.ID)
+				assert.Equal(t, data.MType, metrics.MType)
+
+				value, err := gaugeStorage.Get(data.ID)
+				require.NoError(t, err)
+				assert.Equal(t, tt.value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, tt.value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
 func TestMetricHandler_HandleAll(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
@@ -508,6 +705,54 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 
 			err = result.Body.Close()
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMetricHandler_HandleAll_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		decompress     bool
+		expectedStatus int
+	}{
+		{"No Decompress", false, http.StatusOK},
+		{"Decompress", true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = gaugeStorage.Set("id", 10)
+			require.NoError(t, err)
+
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					_, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				}
+			}
+
+			require.NoError(t, result.Body.Close())
 		})
 	}
 }

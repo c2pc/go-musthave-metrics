@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,10 +48,24 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 		return nil, err
 	}
 
+	buf := new(bytes.Buffer)
+	zb := gzip.NewWriter(buf)
+	defer zb.Close() // Закрываем gzip.Writer в конце функции
+
+	_, err = zb.Write(body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = zb.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	client := &http.Client{
 		Timeout: 1 * time.Second,
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", bytes.NewBuffer(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", buf)
 	if err != nil {
 		return nil, err
 	}
