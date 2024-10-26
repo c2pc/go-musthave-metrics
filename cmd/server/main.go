@@ -15,6 +15,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
+	"github.com/c2pc/go-musthave-metrics/internal/sync"
 	"go.uber.org/zap"
 )
 
@@ -26,6 +27,10 @@ func main() {
 	defer logger.Log.Sync()
 
 	logger.Log.Info("Starting Server APP")
+	defer logger.Log.Info("Shutting Down Server APP")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	cfg, err := config.Parse()
 	if err != nil {
@@ -35,6 +40,17 @@ func main() {
 
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
+
+	syncer, err := sync.Start(ctx, sync.Config{
+		StoreInterval:   cfg.StoreInterval,
+		FileStoragePath: cfg.FileStoragePath,
+		Restore:         cfg.Restore,
+	}, gaugeStorage, counterStorage)
+	if err != nil {
+		logger.Log.Fatal("failed to start syncer", zap.Error(err))
+		return
+	}
+	defer syncer.Close()
 
 	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
 	if err != nil {
@@ -57,12 +73,10 @@ func main() {
 	<-quit
 
 	const timeout = 5 * time.Second
-	ctx, shutdown := context.WithTimeout(context.Background(), timeout)
+	ctx2, shutdown := context.WithTimeout(ctx, timeout)
 	defer shutdown()
 
-	if err := httpServer.Stop(ctx); err != nil {
+	if err := httpServer.Stop(ctx2); err != nil {
 		logger.Log.Info("Failed to Stop Server", zap.Error(err))
 	}
-
-	logger.Log.Info("Shutting Down Server")
 }

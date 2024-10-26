@@ -55,7 +55,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) 
 }
 
 func (h *Handler) Init(engine *gin.Engine) {
-	api := engine.Group("", middleware.Logger, middleware.GzipDecompressor, middleware.GzipCompressor)
+	api := engine.Group("", middleware.GzipDecompressor, middleware.GzipCompressor, middleware.Logger)
 	{
 		api.GET("/", h.handleHTML)
 		api.POST("/update/", h.handleUpdateJSON)
