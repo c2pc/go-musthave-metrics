@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -48,36 +49,54 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 		return nil, err
 	}
 
-	buf := new(bytes.Buffer)
-	zb := gzip.NewWriter(buf)
-	defer zb.Close() // Закрываем gzip.Writer в конце функции
-
-	_, err = zb.Write(body)
-	if err != nil {
+	// Сжимаем данные в формате gzip
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
 		return nil, err
 	}
-
-	err = zb.Close()
-	if err != nil {
+	if err := gz.Close(); err != nil {
 		return nil, err
 	}
 
 	client := &http.Client{
 		Timeout: 1 * time.Second,
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", buf)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", &buf)
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
+	request.Header.Set("Accept-Encoding", "gzip")
+
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
 
+	var respBody []byte
+	if response.Header.Get("Content-Encoding") == "gzip" {
+		reader, err := gzip.NewReader(response.Body)
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+
+		respBody, err = io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		respBody, err = io.ReadAll(response.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var metricRes model.Metrics
-	if err := json.NewDecoder(response.Body).Decode(&metricRes); err != nil {
+	if err := json.Unmarshal(respBody, &metricRes); err != nil {
 		return nil, err
 	}
 
