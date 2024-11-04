@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
+	"github.com/c2pc/go-musthave-metrics/internal/handler/middleware"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,118 +55,234 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) 
 }
 
 func (h *Handler) Init(engine *gin.Engine) {
-	api := engine.Group("")
+	api := engine.Group("", middleware.GzipDecompressor, middleware.GzipCompressor, middleware.Logger)
 	{
 		api.GET("/", h.handleHTML)
+		api.POST("/update/", h.handleUpdateJSON)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
 		api.GET("/value/:type/:name", h.handleValue)
+		api.POST("/value/", h.handleValueJSON)
 	}
 }
 
 func (h *Handler) handleUpdate(c *gin.Context) {
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
-		fmt.Println("metric type is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
 	var metricName string
 	if metricName = c.Param("name"); metricName == "" {
-		fmt.Println("metric name is empty")
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	var metricValue string
 	if metricValue = c.Param("value"); metricValue == "" {
-		fmt.Println("metric value is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println("Request ", metricType, metricName, metricValue)
-
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		if err := h.gaugeStorage.SetString(metricName, metricValue); err != nil {
-			fmt.Println("could not store metric value", err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
 
 	case h.counterStorage.GetName():
 		if err := h.counterStorage.SetString(metricName, metricValue); err != nil {
-			fmt.Println("could not store metric value", err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
 
 	default:
-		fmt.Println("unknown metric type")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println("Success ", metricType, metricName, metricValue)
-
 	c.Status(http.StatusOK)
+}
+
+func (h *Handler) handleUpdateJSON(c *gin.Context) {
+	var metric model.Metrics
+	message, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	err = json.Unmarshal(message, &metric)
+	if err != nil {
+		fmt.Println(err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to unmarshal request body"})
+		return
+	}
+
+	if metric.Type == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The metric type is empty"})
+		return
+	}
+
+	if metric.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "The metric id is empty"})
+		return
+	}
+
+	var metricRequest *model.Metrics
+
+	switch metric.Type {
+	case h.gaugeStorage.GetName():
+		if metric.Value == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "The metric value is empty"})
+			return
+		}
+
+		if err := h.gaugeStorage.Set(metric.ID, *metric.Value); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			return
+		}
+
+		newValue, err := h.gaugeStorage.Get(metric.ID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
+			return
+		}
+
+		metricRequest = &model.Metrics{
+			Type:  h.gaugeStorage.GetName(),
+			ID:    metric.ID,
+			Value: &newValue,
+		}
+
+	case h.counterStorage.GetName():
+		if metric.Delta == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "The metric delta is empty"})
+			return
+		}
+
+		if err := h.counterStorage.Set(metric.ID, *metric.Delta); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			return
+		}
+
+		newValue, err := h.counterStorage.Get(metric.ID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
+			return
+		}
+
+		metricRequest = &model.Metrics{
+			Type:  h.counterStorage.GetName(),
+			ID:    metric.ID,
+			Delta: &newValue,
+		}
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid metrics type"})
+		return
+	}
+
+	c.JSON(http.StatusOK, metricRequest)
 }
 
 func (h *Handler) handleValue(c *gin.Context) {
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
-		fmt.Println("metric type is empty")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
 	var metricName string
 	if metricName = c.Param("name"); metricName == "" {
-		fmt.Println("metric name is empty")
 		c.Status(http.StatusNotFound)
 		return
 	}
-
-	fmt.Println("Request ", metricType, metricName)
 
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		value, err := h.gaugeStorage.GetString(metricName)
 		if err != nil {
-			fmt.Println("not found store metric value", err)
 			c.Status(http.StatusNotFound)
 			return
 		}
 		c.String(http.StatusOK, value)
 		return
+
 	case h.counterStorage.GetName():
 		value, err := h.counterStorage.GetString(metricName)
 		if err != nil {
-			fmt.Println("not found metric value", err)
 			c.Status(http.StatusNotFound)
 			return
 		}
 		c.String(http.StatusOK, value)
 		return
+
 	default:
-		fmt.Println("unknown metric type")
 		c.Status(http.StatusBadRequest)
 		return
 	}
 }
 
+func (h *Handler) handleValueJSON(c *gin.Context) {
+	var metric model.Metrics
+	message, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	err = json.Unmarshal(message, &metric)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to unmarshal request body"})
+		return
+	}
+
+	if metric.Type == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The metric type is empty"})
+		return
+	}
+
+	if metric.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "The metric id is empty"})
+		return
+	}
+
+	switch metric.Type {
+	case h.gaugeStorage.GetName():
+		value, err := h.gaugeStorage.Get(metric.ID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+			return
+		}
+		metric.Value = &value
+
+	case h.counterStorage.GetName():
+		value, err := h.counterStorage.Get(metric.ID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+			return
+		}
+		metric.Delta = &value
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid metric type"})
+		return
+	}
+
+	c.JSON(http.StatusOK, metric)
+}
+
 func (h *Handler) handleHTML(c *gin.Context) {
 	gaugesStats, err := h.gaugeStorage.GetAllString()
 	if err != nil {
-		fmt.Println("could not get gauge stats", err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	counterStats, err := h.counterStorage.GetAllString()
 	if err != nil {
-		fmt.Println("could not get counter stats", err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}

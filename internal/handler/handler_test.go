@@ -1,14 +1,19 @@
 package handler_test
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,6 +123,209 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	var defaultDelta, defaultDelta2 int64 = 10, -6
+	var defaultValue, defaultValue2 float64 = 10, 0.5
+
+	type data struct {
+		ID    interface{} `json:"id"`
+		Type  interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           *data
+		expectedStatus int
+	}{
+		{"Get", http.MethodGet, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
+		{"Empty type", http.MethodPost, &data{ID: "id", Type: "", Delta: defaultDelta, Value: defaultValue}, http.StatusBadRequest},
+		{"Empty name", http.MethodPost, &data{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name2", http.MethodPost, &data{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name3", http.MethodPost, &data{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}, http.StatusNotFound},
+		{"Empty value", http.MethodPost, &data{ID: "id1", Type: "counter", Delta: nil, Value: nil}, http.StatusBadRequest},
+		{"Empty value2", http.MethodPost, &data{ID: "id2", Type: "gauge", Delta: nil, Value: nil}, http.StatusBadRequest},
+
+		{"Invalid type", http.MethodPost, &data{ID: "id3", Type: "invalid", Delta: defaultDelta2, Value: defaultValue2}, http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, &data{ID: "id3", Type: "gauge", Value: "invalid"}, http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, &data{ID: "id3", Type: "counter", Delta: "invalid"}, http.StatusBadRequest},
+
+		{"Success Gauge", http.MethodPost, &data{ID: "id2", Type: "gauge", Value: defaultValue2}, http.StatusOK},
+		{"Success Counter", http.MethodPost, &data{ID: "id3", Type: "counter", Delta: defaultDelta2}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/update/", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			err := result.Body.Close()
+			require.NoError(t, err)
+
+			if tt.expectedStatus == http.StatusOK {
+				res, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, tt.data.ID, metrics.ID)
+				assert.Equal(t, tt.data.Type, metrics.Type)
+
+				switch tt.data.Type {
+				case gaugeStorage.GetName():
+					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.data.Value, value)
+					assert.NotEmpty(t, *metrics.Value)
+					assert.Equal(t, tt.data.Value, *metrics.Value)
+				case counterStorage.GetName():
+					value, err := counterStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.data.Delta, value)
+					assert.NotEmpty(t, *metrics.Delta)
+					assert.Equal(t, tt.data.Delta, *metrics.Delta)
+
+				default:
+					assert.Fail(t, "unknown metrics type")
+				}
+			}
+
+		})
+	}
+}
+
+func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		compress       bool
+		decompress     bool
+		expectedStatus int
+	}{
+		{"Compress", 1, true, false, http.StatusOK},
+		{"Decompress", 2, false, true, http.StatusOK},
+		{"All", 3, true, true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data = struct {
+				ID    string  `json:"id"`
+				Type  string  `json:"type"`
+				Delta int64   `json:"delta,omitempty"`
+				Value float64 `json:"value,omitempty"`
+			}{
+				ID:    "1",
+				Type:  gaugeStorage.GetName(),
+				Delta: 1,
+				Value: tt.value,
+			}
+
+			buf := new(bytes.Buffer)
+
+			out, err := json.Marshal(data)
+			require.NoError(t, err)
+
+			if tt.compress {
+				zb := gzip.NewWriter(buf)
+				defer zb.Close() // Закрываем gzip.Writer в конце функции
+
+				_, err = zb.Write(out)
+				require.NoError(t, err)
+
+				err = zb.Close() // Обязательно закрываем после записи
+				require.NoError(t, err)
+			} else {
+				buf.Write(out) // Если не сжимаем, просто добавляем данные
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/update/", buf)
+			request.Header.Set("Content-Type", "application/json")
+			if tt.compress {
+				request.Header.Set("Content-Encoding", "gzip")
+			}
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				var res []byte
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					res, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				} else {
+					res, err = io.ReadAll(result.Body)
+					require.NoError(t, err)
+				}
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, data.ID, metrics.ID)
+				assert.Equal(t, data.Type, metrics.Type)
+
+				value, err := gaugeStorage.Get(data.ID)
+				require.NoError(t, err)
+				assert.Equal(t, data.Value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, data.Value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
 func TestMetricHandler_HandleValue(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
@@ -219,6 +427,219 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleValueJSON(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	var defaultDelta int64 = -6
+	var defaultValue = 0.5
+
+	type data struct {
+		ID   interface{} `json:"id"`
+		Type interface{} `json:"type"`
+	}
+	type expectedData struct {
+		ID    interface{} `json:"id"`
+		Type  interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           *data
+		expectedStatus int
+		expectedBody   *expectedData
+	}{
+		{"Post", http.MethodGet, nil, http.StatusNotFound, nil},
+		{"Put", http.MethodPut, nil, http.StatusNotFound, nil},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound, nil},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound, nil},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound, nil},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound, nil},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound, nil},
+		{"Head", http.MethodHead, nil, http.StatusNotFound, nil},
+
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest, nil},
+		{"Empty type", http.MethodPost, &data{ID: "id", Type: ""}, http.StatusBadRequest, nil},
+		{"Empty name", http.MethodPost, &data{ID: "", Type: "gauge"}, http.StatusNotFound, nil},
+		{"Empty name2", http.MethodPost, &data{ID: "", Type: "gauge"}, http.StatusNotFound, nil},
+
+		{"Invalid type", http.MethodPost, &data{ID: "id3", Type: "invalid"}, http.StatusBadRequest, nil},
+
+		{"Not found Gauge", http.MethodPost, &data{ID: "id4", Type: "gauge"}, http.StatusNotFound, nil},
+		{"Not found Counter", http.MethodPost, &data{ID: "id5", Type: "counter"}, http.StatusNotFound, nil},
+
+		{"Success Gauge", http.MethodPost, &data{ID: "id41", Type: "gauge"}, http.StatusOK, &expectedData{ID: "id41", Type: "gauge", Value: defaultValue}},
+		{"Success Counter", http.MethodPost, &data{ID: "id42", Type: "counter"}, http.StatusOK, &expectedData{ID: "id42", Type: "counter", Delta: defaultDelta}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expectedBody != nil {
+				if tt.data.Type == "gauge" {
+					err = gaugeStorage.Set(tt.data.ID.(string), tt.expectedBody.Value.(float64))
+					require.NoError(t, err)
+				} else if tt.data.Type == "counter" {
+					err = counterStorage.Set(tt.data.ID.(string), tt.expectedBody.Delta.(int64))
+					require.NoError(t, err)
+				}
+			}
+
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/value/", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if tt.expectedBody != nil {
+				res, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, tt.data.ID, metrics.ID)
+				assert.Equal(t, tt.data.Type, metrics.Type)
+
+				switch tt.data.Type {
+				case gaugeStorage.GetName():
+					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectedBody.Value, value)
+					assert.NotEmpty(t, *metrics.Value)
+					assert.Equal(t, tt.expectedBody.Value, *metrics.Value)
+				case counterStorage.GetName():
+					value, err := counterStorage.Get(tt.data.ID.(string))
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectedBody.Delta, value)
+					assert.NotEmpty(t, *metrics.Delta)
+					assert.Equal(t, tt.expectedBody.Delta, *metrics.Delta)
+
+				default:
+					assert.Fail(t, "unknown metrics type")
+				}
+			}
+
+			err = result.Body.Close()
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		compress       bool
+		decompress     bool
+		expectedStatus int
+	}{
+		{"Compress", 1, true, false, http.StatusOK},
+		{"Decompress", 2, false, true, http.StatusOK},
+		{"All", 3, true, true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data = struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			}{
+				ID:   "1",
+				Type: gaugeStorage.GetName(),
+			}
+
+			buf := new(bytes.Buffer)
+
+			err = gaugeStorage.Set(data.ID, tt.value)
+			require.NoError(t, err)
+
+			out, err := json.Marshal(data)
+			require.NoError(t, err)
+
+			if tt.compress {
+				zb := gzip.NewWriter(buf)
+				defer zb.Close() // Закрываем gzip.Writer в конце функции
+
+				_, err = zb.Write(out)
+				require.NoError(t, err)
+
+				err = zb.Close() // Обязательно закрываем после записи
+				require.NoError(t, err)
+			} else {
+				buf.Write(out) // Если не сжимаем, просто добавляем данные
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/value/", buf)
+			request.Header.Set("Content-Type", "application/json")
+			if tt.compress {
+				request.Header.Set("Content-Encoding", "gzip")
+			}
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				var res []byte
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					res, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				} else {
+					res, err = io.ReadAll(result.Body)
+					require.NoError(t, err)
+				}
+
+				var metrics model.Metrics
+				err = json.Unmarshal(res, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, data.ID, metrics.ID)
+				assert.Equal(t, data.Type, metrics.Type)
+
+				value, err := gaugeStorage.Get(data.ID)
+				require.NoError(t, err)
+				assert.Equal(t, tt.value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, tt.value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
 func TestMetricHandler_HandleAll(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
@@ -284,6 +705,54 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 
 			err = result.Body.Close()
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMetricHandler_HandleAll_Compress(t *testing.T) {
+	gaugeStorage := storage.NewGaugeStorage()
+	counterStorage := storage.NewCounterStorage()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		decompress     bool
+		expectedStatus int
+	}{
+		{"No Decompress", false, http.StatusOK},
+		{"Decompress", true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = gaugeStorage.Set("id", 10)
+			require.NoError(t, err)
+
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.decompress {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				if tt.decompress {
+					zr, err := gzip.NewReader(result.Body)
+					require.NoError(t, err)
+					defer zr.Close() // Обязательно закрываем gzip.Reader
+
+					_, err = io.ReadAll(zr)
+					require.NoError(t, err)
+				}
+			}
+
+			require.NoError(t, result.Body.Close())
 		})
 	}
 }

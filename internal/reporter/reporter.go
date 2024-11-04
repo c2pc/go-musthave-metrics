@@ -2,13 +2,15 @@ package reporter
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
+
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 )
 
 type Updater interface {
-	UpdateMetric(ctx context.Context, tp string, name string, value interface{}) error
+	UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error)
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -58,7 +60,7 @@ func (r *Reporter) Run(ctx context.Context) {
 }
 
 func (r *Reporter) pollMetrics() {
-	fmt.Println("Starting polling metrics...")
+	logger.Log.Info("Starting polling metrics...")
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(2)
 
@@ -74,23 +76,23 @@ func (r *Reporter) pollMetrics() {
 
 	waitGroup.Wait()
 
-	fmt.Println("Finish polling metrics...")
+	logger.Log.Info("Finish polling metrics...")
 }
 
 func (r *Reporter) reportMetrics(ctx context.Context) {
-	fmt.Println("Starting reporting metrics...")
+	logger.Log.Info("Starting reporting metrics...")
 	waitGroup := sync.WaitGroup{}
 
 	for key, value := range r.counterMetric.GetStats() {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			fmt.Printf("Update Counter metric: %s = %v\n", key, value)
-			err := r.client.UpdateMetric(ctx, r.counterMetric.GetName(), key, value)
+			metric, err := r.client.UpdateMetric(ctx, r.counterMetric.GetName(), key, value)
 			if err != nil {
-				fmt.Printf("Error updating counter metric: %s = %v\n", key, err)
+				logger.Log.Info("Error updating counter metric", logger.Any("key", key), logger.Error(err))
 				return
 			}
+			logger.Log.Info("Update Counter metric", logger.Any("key", key), logger.Any("value", value), logger.Any("response", metric))
 		}()
 	}
 
@@ -98,16 +100,16 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			fmt.Printf("Update Gauge metric: %s = %v\n", key, value)
-			err := r.client.UpdateMetric(ctx, r.gaugeMetric.GetName(), key, value)
+			metric, err := r.client.UpdateMetric(ctx, r.gaugeMetric.GetName(), key, value)
 			if err != nil {
-				fmt.Printf("Error updating gauge metric: %s = %v\n", key, err)
+				logger.Log.Info("Error updating gauge metric", logger.Any("key", key), logger.Error(err))
 				return
 			}
+			logger.Log.Info("Update Gauge metric", logger.Any("key", key), logger.Any("value", value), logger.Any("response", metric))
 		}()
 	}
 
 	waitGroup.Wait()
 
-	fmt.Println("Finish reporting metrics...")
+	logger.Log.Info("Finish reporting metrics...")
 }

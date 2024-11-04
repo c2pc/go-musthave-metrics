@@ -2,14 +2,16 @@ package client
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
+	"time"
 
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
@@ -27,35 +29,76 @@ func NewClient(serverAddr string) reporter.Updater {
 	}
 }
 
-func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) error {
-	var url = "/update/" + tp + "/" + name
+func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error) {
+	metricRequest := model.Metrics{
+		ID:   name,
+		Type: tp,
+	}
 
 	switch val := value.(type) {
 	case int64:
-		url += "/" + strconv.FormatInt(val, 10)
+		metricRequest.Delta = &val
 	case float64:
-		url += "/" + strconv.FormatFloat(val, 'f', -1, 64)
+		metricRequest.Value = &val
 	default:
-		return errors.New("invalid metric value type")
+		return nil, errors.New("invalid metric value type")
 	}
 
-	client := &http.Client{}
-	var body []byte
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+url, bytes.NewBuffer(body))
+	body, err := json.Marshal(metricRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	request.Header.Set("Content-Type", "text/plain")
+
+	// Сжимаем данные в формате gzip
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{
+		Timeout: 1 * time.Second,
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", &buf)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
+	request.Header.Set("Accept-Encoding", "gzip")
+
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer response.Body.Close()
 
-	_, err = io.Copy(os.Stdout, response.Body)
-	if err != nil {
-		return err
+	var respBody []byte
+	if response.Header.Get("Content-Encoding") == "gzip" {
+		reader, err := gzip.NewReader(response.Body)
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+
+		respBody, err = io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		respBody, err = io.ReadAll(response.Body)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return nil
+	var metricRes model.Metrics
+	if err := json.Unmarshal(respBody, &metricRes); err != nil {
+		return nil, err
+	}
+
+	return &metricRes, nil
 }
