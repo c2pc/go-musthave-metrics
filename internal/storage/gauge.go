@@ -48,6 +48,10 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 	}
 	defer rows.Close()
 
+	if rows.Err() != nil {
+		return 0, rows.Err()
+	}
+
 	var value float64
 	for rows.Next() {
 		if err := rows.Scan(&value); err != nil {
@@ -132,8 +136,12 @@ func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, er
 	}
 	defer rows.Close()
 
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
 	result := make(map[string]float64)
-	for rows.Next() {
+	if rows.Next() {
 		var key string
 		var value float64
 		if err := rows.Scan(&key, &value); err != nil {
