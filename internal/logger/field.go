@@ -18,8 +18,8 @@ func Error(err error) Field {
 func convertFields(fields ...Field) []zap.Field {
 	formatedFields := make([]zap.Field, len(fields))
 
-	for _, field := range fields {
-		formatedFields = append(formatedFields, zap.Any(field.Key, field.Value))
+	for i, field := range fields {
+		formatedFields[i] = zap.Any(field.Key, field.Value)
 	}
 
 	return formatedFields
