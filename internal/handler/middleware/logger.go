@@ -5,10 +5,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 )
 
 type bodyLogWriter struct {
@@ -34,14 +33,14 @@ func Logger(c *gin.Context) {
 
 	c.Next()
 
-	fields := []zapcore.Field{
-		zap.Time("start", start),
-		zap.String("latency", time.Since(start).String()),
-		zap.String("method", c.Request.Method),
-		zap.Int("status", c.Writer.Status()),
-		zap.String("client_ip", c.ClientIP()),
-		zap.String("request", string(body)),
-		zap.String("response", blw.body.String()),
+	fields := []logger.Field{
+		logger.Any("start", start),
+		logger.Any("latency", time.Since(start).String()),
+		logger.Any("method", c.Request.Method),
+		logger.Any("status", c.Writer.Status()),
+		logger.Any("client_ip", c.ClientIP()),
+		logger.Any("request", string(body)),
+		logger.Any("response", blw.body.String()),
 	}
 
 	logger.Log.Info(c.Request.RequestURI, fields...)

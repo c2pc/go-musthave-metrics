@@ -120,7 +120,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		return
 	}
 
-	if metric.MType == "" {
+	if metric.Type == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The metric type is empty"})
 		return
 	}
@@ -132,7 +132,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 
 	var metricRequest *model.Metrics
 
-	switch metric.MType {
+	switch metric.Type {
 	case h.gaugeStorage.GetName():
 		if metric.Value == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "The metric value is empty"})
@@ -151,7 +151,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		}
 
 		metricRequest = &model.Metrics{
-			MType: h.gaugeStorage.GetName(),
+			Type:  h.gaugeStorage.GetName(),
 			ID:    metric.ID,
 			Value: &newValue,
 		}
@@ -174,7 +174,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		}
 
 		metricRequest = &model.Metrics{
-			MType: h.counterStorage.GetName(),
+			Type:  h.counterStorage.GetName(),
 			ID:    metric.ID,
 			Delta: &newValue,
 		}
@@ -239,7 +239,7 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 		return
 	}
 
-	if metric.MType == "" {
+	if metric.Type == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The metric type is empty"})
 		return
 	}
@@ -249,7 +249,7 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 		return
 	}
 
-	switch metric.MType {
+	switch metric.Type {
 	case h.gaugeStorage.GetName():
 		value, err := h.gaugeStorage.Get(metric.ID)
 		if err != nil {

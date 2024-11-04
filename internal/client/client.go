@@ -31,8 +31,8 @@ func NewClient(serverAddr string) reporter.Updater {
 
 func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error) {
 	metricRequest := model.Metrics{
-		ID:    name,
-		MType: tp,
+		ID:   name,
+		Type: tp,
 	}
 
 	switch val := value.(type) {

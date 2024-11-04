@@ -135,7 +135,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 
 	type data struct {
 		ID    interface{} `json:"id"`
-		MType interface{} `json:"type"`
+		Type  interface{} `json:"type"`
 		Delta interface{} `json:"delta,omitempty"`
 		Value interface{} `json:"value,omitempty"`
 	}
@@ -156,19 +156,19 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 		{"Head", http.MethodHead, nil, http.StatusNotFound},
 
 		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
-		{"Empty type", http.MethodPost, &data{ID: "id", MType: "", Delta: defaultDelta, Value: defaultValue}, http.StatusBadRequest},
-		{"Empty name", http.MethodPost, &data{ID: "", MType: "gauge", Delta: defaultDelta2, Value: defaultValue2}, http.StatusNotFound},
-		{"Empty name2", http.MethodPost, &data{ID: "", MType: "counter", Delta: defaultDelta, Value: defaultValue2}, http.StatusNotFound},
-		{"Empty name3", http.MethodPost, &data{ID: "", MType: "gauge", Delta: defaultDelta2, Value: defaultValue}, http.StatusNotFound},
-		{"Empty value", http.MethodPost, &data{ID: "id1", MType: "counter", Delta: nil, Value: nil}, http.StatusBadRequest},
-		{"Empty value2", http.MethodPost, &data{ID: "id2", MType: "gauge", Delta: nil, Value: nil}, http.StatusBadRequest},
+		{"Empty type", http.MethodPost, &data{ID: "id", Type: "", Delta: defaultDelta, Value: defaultValue}, http.StatusBadRequest},
+		{"Empty name", http.MethodPost, &data{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name2", http.MethodPost, &data{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}, http.StatusNotFound},
+		{"Empty name3", http.MethodPost, &data{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}, http.StatusNotFound},
+		{"Empty value", http.MethodPost, &data{ID: "id1", Type: "counter", Delta: nil, Value: nil}, http.StatusBadRequest},
+		{"Empty value2", http.MethodPost, &data{ID: "id2", Type: "gauge", Delta: nil, Value: nil}, http.StatusBadRequest},
 
-		{"Invalid type", http.MethodPost, &data{ID: "id3", MType: "invalid", Delta: defaultDelta2, Value: defaultValue2}, http.StatusBadRequest},
-		{"Invalid value", http.MethodPost, &data{ID: "id3", MType: "gauge", Value: "invalid"}, http.StatusBadRequest},
-		{"Invalid value2", http.MethodPost, &data{ID: "id3", MType: "counter", Delta: "invalid"}, http.StatusBadRequest},
+		{"Invalid type", http.MethodPost, &data{ID: "id3", Type: "invalid", Delta: defaultDelta2, Value: defaultValue2}, http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, &data{ID: "id3", Type: "gauge", Value: "invalid"}, http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, &data{ID: "id3", Type: "counter", Delta: "invalid"}, http.StatusBadRequest},
 
-		{"Success Gauge", http.MethodPost, &data{ID: "id2", MType: "gauge", Value: defaultValue2}, http.StatusOK},
-		{"Success Counter", http.MethodPost, &data{ID: "id3", MType: "counter", Delta: defaultDelta2}, http.StatusOK},
+		{"Success Gauge", http.MethodPost, &data{ID: "id2", Type: "gauge", Value: defaultValue2}, http.StatusOK},
+		{"Success Counter", http.MethodPost, &data{ID: "id3", Type: "counter", Delta: defaultDelta2}, http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,9 +202,9 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, tt.data.ID, metrics.ID)
-				assert.Equal(t, tt.data.MType, metrics.MType)
+				assert.Equal(t, tt.data.Type, metrics.Type)
 
-				switch tt.data.MType {
+				switch tt.data.Type {
 				case gaugeStorage.GetName():
 					value, err := gaugeStorage.Get(tt.data.ID.(string))
 					require.NoError(t, err)
@@ -250,12 +250,12 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var data = struct {
 				ID    string  `json:"id"`
-				MType string  `json:"type"`
+				Type  string  `json:"type"`
 				Delta int64   `json:"delta,omitempty"`
 				Value float64 `json:"value,omitempty"`
 			}{
 				ID:    "1",
-				MType: gaugeStorage.GetName(),
+				Type:  gaugeStorage.GetName(),
 				Delta: 1,
 				Value: tt.value,
 			}
@@ -312,7 +312,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, data.ID, metrics.ID)
-				assert.Equal(t, data.MType, metrics.MType)
+				assert.Equal(t, data.Type, metrics.Type)
 
 				value, err := gaugeStorage.Get(data.ID)
 				require.NoError(t, err)
@@ -438,12 +438,12 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 	var defaultValue = 0.5
 
 	type data struct {
-		ID    interface{} `json:"id"`
-		MType interface{} `json:"type"`
+		ID   interface{} `json:"id"`
+		Type interface{} `json:"type"`
 	}
 	type expectedData struct {
 		ID    interface{} `json:"id"`
-		MType interface{} `json:"type"`
+		Type  interface{} `json:"type"`
 		Delta interface{} `json:"delta,omitempty"`
 		Value interface{} `json:"value,omitempty"`
 	}
@@ -465,25 +465,25 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		{"Head", http.MethodHead, nil, http.StatusNotFound, nil},
 
 		{"Empty body", http.MethodPost, nil, http.StatusBadRequest, nil},
-		{"Empty type", http.MethodPost, &data{ID: "id", MType: ""}, http.StatusBadRequest, nil},
-		{"Empty name", http.MethodPost, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
-		{"Empty name2", http.MethodPost, &data{ID: "", MType: "gauge"}, http.StatusNotFound, nil},
+		{"Empty type", http.MethodPost, &data{ID: "id", Type: ""}, http.StatusBadRequest, nil},
+		{"Empty name", http.MethodPost, &data{ID: "", Type: "gauge"}, http.StatusNotFound, nil},
+		{"Empty name2", http.MethodPost, &data{ID: "", Type: "gauge"}, http.StatusNotFound, nil},
 
-		{"Invalid type", http.MethodPost, &data{ID: "id3", MType: "invalid"}, http.StatusBadRequest, nil},
+		{"Invalid type", http.MethodPost, &data{ID: "id3", Type: "invalid"}, http.StatusBadRequest, nil},
 
-		{"Not found Gauge", http.MethodPost, &data{ID: "id4", MType: "gauge"}, http.StatusNotFound, nil},
-		{"Not found Counter", http.MethodPost, &data{ID: "id5", MType: "counter"}, http.StatusNotFound, nil},
+		{"Not found Gauge", http.MethodPost, &data{ID: "id4", Type: "gauge"}, http.StatusNotFound, nil},
+		{"Not found Counter", http.MethodPost, &data{ID: "id5", Type: "counter"}, http.StatusNotFound, nil},
 
-		{"Success Gauge", http.MethodPost, &data{ID: "id41", MType: "gauge"}, http.StatusOK, &expectedData{ID: "id41", MType: "gauge", Value: defaultValue}},
-		{"Success Counter", http.MethodPost, &data{ID: "id42", MType: "counter"}, http.StatusOK, &expectedData{ID: "id42", MType: "counter", Delta: defaultDelta}},
+		{"Success Gauge", http.MethodPost, &data{ID: "id41", Type: "gauge"}, http.StatusOK, &expectedData{ID: "id41", Type: "gauge", Value: defaultValue}},
+		{"Success Counter", http.MethodPost, &data{ID: "id42", Type: "counter"}, http.StatusOK, &expectedData{ID: "id42", Type: "counter", Delta: defaultDelta}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.expectedBody != nil {
-				if tt.data.MType == "gauge" {
+				if tt.data.Type == "gauge" {
 					err = gaugeStorage.Set(tt.data.ID.(string), tt.expectedBody.Value.(float64))
 					require.NoError(t, err)
-				} else if tt.data.MType == "counter" {
+				} else if tt.data.Type == "counter" {
 					err = counterStorage.Set(tt.data.ID.(string), tt.expectedBody.Delta.(int64))
 					require.NoError(t, err)
 				}
@@ -516,9 +516,9 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, tt.data.ID, metrics.ID)
-				assert.Equal(t, tt.data.MType, metrics.MType)
+				assert.Equal(t, tt.data.Type, metrics.Type)
 
-				switch tt.data.MType {
+				switch tt.data.Type {
 				case gaugeStorage.GetName():
 					value, err := gaugeStorage.Get(tt.data.ID.(string))
 					require.NoError(t, err)
@@ -565,11 +565,11 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var data = struct {
-				ID    string `json:"id"`
-				MType string `json:"type"`
+				ID   string `json:"id"`
+				Type string `json:"type"`
 			}{
-				ID:    "1",
-				MType: gaugeStorage.GetName(),
+				ID:   "1",
+				Type: gaugeStorage.GetName(),
 			}
 
 			buf := new(bytes.Buffer)
@@ -627,7 +627,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, data.ID, metrics.ID)
-				assert.Equal(t, data.MType, metrics.MType)
+				assert.Equal(t, data.Type, metrics.Type)
 
 				value, err := gaugeStorage.Get(data.ID)
 				require.NoError(t, err)

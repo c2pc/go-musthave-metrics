@@ -12,7 +12,6 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
-	"go.uber.org/zap"
 )
 
 type Reporter interface {
@@ -31,7 +30,7 @@ func main() {
 
 	cfg, err := config.Parse()
 	if err != nil {
-		logger.Log.Fatal("failed to parse config", zap.Error(err))
+		logger.Log.Fatal("failed to parse config", logger.Error(err))
 		return
 	}
 
