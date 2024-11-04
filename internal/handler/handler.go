@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,13 +22,18 @@ type Storager[T int64 | float64] interface {
 	SetString(key string, value string) error
 }
 
+type DBDriver interface {
+	Ping(ctx context.Context) error
+}
+
 type Handler struct {
 	http.Handler
 	gaugeStorage   Storager[float64]
 	counterStorage Storager[int64]
+	db             DBDriver
 }
 
-func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) (http.Handler, error) {
+func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db DBDriver) (http.Handler, error) {
 	if counterStorage == nil {
 		return nil, fmt.Errorf("counterStorage is nil")
 	}
@@ -47,6 +53,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64]) 
 		Handler:        handlers,
 		gaugeStorage:   gaugeStorage,
 		counterStorage: counterStorage,
+		db:             db,
 	}
 
 	h.Init(handlers)
@@ -58,6 +65,7 @@ func (h *Handler) Init(engine *gin.Engine) {
 	api := engine.Group("", middleware.GzipDecompressor, middleware.GzipCompressor, middleware.Logger)
 	{
 		api.GET("/", h.handleHTML)
+		api.GET("/ping", h.ping)
 		api.POST("/update/", h.handleUpdateJSON)
 		api.POST("/update/:type/:name/:value", h.handleUpdate)
 		api.GET("/value/:type/:name", h.handleValue)
@@ -329,4 +337,14 @@ func (h *Handler) mapToHTML(m map[string]string) string {
 		output += fmt.Sprintf("<tr><th>%v</th><th>%v</th></tr>", k, v)
 	}
 	return output
+}
+
+func (h *Handler) ping(c *gin.Context) {
+	ctx := c.Request.Context()
+	err := h.db.Ping(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to database"})
+		return
+	}
+	c.String(http.StatusOK, "pong")
 }

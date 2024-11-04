@@ -5,6 +5,8 @@ go 1.22.6
 require (
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/gin-gonic/gin v1.10.0
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
 )

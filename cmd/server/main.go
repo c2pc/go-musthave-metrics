@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
+	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
@@ -37,6 +38,16 @@ func main() {
 		return
 	}
 
+	dbContext, dbCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer dbCancel()
+
+	db, err := database.Connect(dbContext, cfg.DatabaseDSN)
+	if err != nil {
+		logger.Log.Fatal("failed to connect database", logger.Error(err))
+		return
+	}
+	defer db.Close()
+
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
@@ -51,7 +62,7 @@ func main() {
 	}
 	defer syncer.Close()
 
-	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
+	handlers, err := handler.NewHandler(gaugeStorage, counterStorage, db)
 	if err != nil {
 		logger.Log.Fatal("failed to init handlers", logger.Error(err))
 	}

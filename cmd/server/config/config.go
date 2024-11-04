@@ -21,6 +21,7 @@ var (
 	storeInterval   = flag.Int64("i", defaultStoreInterval, "The interval, in seconds, of the file store")
 	fileStoragePath = flag.String("f", defaultFileStoragePath, "The path to the file storage")
 	restore         = flag.Bool("r", defaultRestore, "The restore flag")
+	databaseDSN     = flag.String("d", "", "The database DSN")
 )
 
 type envConfig struct {
@@ -28,6 +29,7 @@ type envConfig struct {
 	StoreInterval   string `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         string `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 type Config struct {
@@ -35,6 +37,7 @@ type Config struct {
 	StoreInterval   int64
 	FileStoragePath string
 	Restore         bool
+	DatabaseDSN     string
 }
 
 func Parse() (*Config, error) {
@@ -98,6 +101,15 @@ func Parse() (*Config, error) {
 		}
 	} else {
 		cfg.Restore = *restore
+	}
+
+	//Parsing Database DSN
+	if envCfg.DatabaseDSN != "" {
+		cfg.DatabaseDSN = envCfg.DatabaseDSN
+	} else if v := os.Getenv("DATABASE_DSN"); v != "" {
+		cfg.DatabaseDSN = v
+	} else {
+		cfg.DatabaseDSN = *databaseDSN
 	}
 
 	return cfg, nil
