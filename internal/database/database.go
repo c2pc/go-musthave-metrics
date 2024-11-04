@@ -22,10 +22,6 @@ func Connect(ctx context.Context, dsn string) (Driver, error) {
 		return nil, err
 	}
 
-	if err := db.PingContext(ctx); err != nil {
-		return nil, err
-	}
-
 	return &DB{db}, err
 }
 
