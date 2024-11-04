@@ -345,6 +345,10 @@ func (h *Handler) mapToHTML(m map[string]string) string {
 
 func (h *Handler) ping(c *gin.Context) {
 	ctx := c.Request.Context()
+	if h.db == nil {
+		c.Status(http.StatusServiceUnavailable)
+	}
+
 	err := h.db.Ping(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to database"})
