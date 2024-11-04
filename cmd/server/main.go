@@ -41,19 +41,36 @@ func main() {
 	db := database.New(cfg.DatabaseDSN)
 	defer db.Close()
 
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	var memoryType storage.Type
+	if cfg.DatabaseDSN == "" {
+		memoryType = storage.TypeMemory
+	} else {
+		memoryType = storage.TypeDB
+	}
 
-	syncer, err := sync.Start(ctx, sync.Config{
-		StoreInterval:   cfg.StoreInterval,
-		FileStoragePath: cfg.FileStoragePath,
-		Restore:         cfg.Restore,
-	}, gaugeStorage, counterStorage)
+	gaugeStorage, err := storage.NewGaugeStorage(memoryType, db)
 	if err != nil {
-		logger.Log.Fatal("failed to start syncer", logger.Error(err))
+		logger.Log.Fatal("failed to initialize gaugeStorage", logger.Error(err))
 		return
 	}
-	defer syncer.Close()
+	counterStorage, err := storage.NewCounterStorage(memoryType, db)
+	if err != nil {
+		logger.Log.Fatal("failed to initialize counterStorage", logger.Error(err))
+		return
+	}
+
+	if cfg.FileStoragePath != "" && cfg.DatabaseDSN == "" {
+		syncer, err := sync.Start(ctx, sync.Config{
+			StoreInterval:   cfg.StoreInterval,
+			FileStoragePath: cfg.FileStoragePath,
+			Restore:         cfg.Restore,
+		}, gaugeStorage, counterStorage)
+		if err != nil {
+			logger.Log.Fatal("failed to start syncer", logger.Error(err))
+			return
+		}
+		defer syncer.Close()
+	}
 
 	handlers, err := handler.NewHandler(gaugeStorage, counterStorage, db)
 	if err != nil {

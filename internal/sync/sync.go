@@ -19,9 +19,9 @@ const (
 
 type Storager interface {
 	GetName() string
-	GetString(key string) (string, error)
-	GetAllString() (map[string]string, error)
-	SetString(key string, value string) error
+	GetString(ctx context.Context, key string) (string, error)
+	GetAllString(ctx context.Context) (map[string]string, error)
+	SetString(ctx context.Context, key string, value string) error
 }
 
 type Sync struct {
@@ -60,7 +60,7 @@ func Start(ctx context.Context, cfg Config, storages ...Storager) (io.Closer, er
 	}
 
 	if cfg.Restore {
-		if err := s.restore(); err != nil {
+		if err := s.restore(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -85,7 +85,7 @@ func (s *Sync) listen(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := s.saveDataToFile()
+			err := s.saveDataToFile(ctx)
 			if err != nil {
 				log.Printf("failed to save data to file: %v", err)
 			}
@@ -93,7 +93,7 @@ func (s *Sync) listen(ctx context.Context, interval time.Duration) {
 	}
 }
 
-func (s *Sync) restore() error {
+func (s *Sync) restore(ctx context.Context) error {
 	if s.file == nil {
 		return errors.New("file not open")
 	}
@@ -123,7 +123,7 @@ func (s *Sync) restore() error {
 		return err
 	}
 
-	err = s.writeDataToStorage(dataList...)
+	err = s.writeDataToStorage(ctx, dataList...)
 	if err != nil {
 		return err
 	}
@@ -131,8 +131,8 @@ func (s *Sync) restore() error {
 	return nil
 }
 
-func (s *Sync) saveDataToFile() error {
-	data, err := s.readDataFromStorage()
+func (s *Sync) saveDataToFile(ctx context.Context) error {
+	data, err := s.readDataFromStorage(ctx)
 	if err != nil {
 		return err
 	}
@@ -169,10 +169,10 @@ func (s *Sync) dataToLine(data column) string {
 	return fmt.Sprintf("%s%s%s%s%s", data.name, separator, data.key, separator, data.value)
 }
 
-func (s *Sync) readDataFromStorage() ([]column, error) {
+func (s *Sync) readDataFromStorage(ctx context.Context) ([]column, error) {
 	var dataList []column
 	for _, storager := range s.storages {
-		data, err := storager.GetAllString()
+		data, err := storager.GetAllString(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -183,12 +183,12 @@ func (s *Sync) readDataFromStorage() ([]column, error) {
 	return dataList, nil
 }
 
-func (s *Sync) writeDataToStorage(data ...column) error {
+func (s *Sync) writeDataToStorage(ctx context.Context, data ...column) error {
 	for _, d := range data {
 		if _, ok := s.storages[d.name]; !ok {
 			return fmt.Errorf("storage %s not found", d.name)
 		}
-		err := s.storages[d.name].SetString(d.key, d.value)
+		err := s.storages[d.name].SetString(ctx, d.key, d.value)
 		if err != nil {
 			return err
 		}

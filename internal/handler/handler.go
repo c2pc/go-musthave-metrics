@@ -7,33 +7,34 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/c2pc/go-musthave-metrics/internal/handler/middleware"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
-	"github.com/gin-gonic/gin"
 )
 
 type Storager[T int64 | float64] interface {
 	GetName() string
-	Get(key string) (T, error)
-	GetString(key string) (string, error)
-	GetAll() (map[string]T, error)
-	GetAllString() (map[string]string, error)
-	Set(key string, value T) error
-	SetString(key string, value string) error
+	Get(ctx context.Context, key string) (T, error)
+	GetString(ctx context.Context, key string) (string, error)
+	GetAll(ctx context.Context) (map[string]T, error)
+	GetAllString(ctx context.Context) (map[string]string, error)
+	Set(ctx context.Context, key string, value T) error
+	SetString(ctx context.Context, key string, value string) error
 }
 
-type DBDriver interface {
-	Ping(ctx context.Context) error
+type Pinger interface {
+	Ping() error
 }
 
 type Handler struct {
 	http.Handler
 	gaugeStorage   Storager[float64]
 	counterStorage Storager[int64]
-	db             DBDriver
+	db             Pinger
 }
 
-func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db DBDriver) (http.Handler, error) {
+func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger) (http.Handler, error) {
 	if counterStorage == nil {
 		return nil, fmt.Errorf("counterStorage is empty")
 	}
@@ -78,6 +79,8 @@ func (h *Handler) Init(engine *gin.Engine) {
 }
 
 func (h *Handler) handleUpdate(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
 		c.Status(http.StatusBadRequest)
@@ -98,13 +101,13 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 
 	switch metricType {
 	case h.gaugeStorage.GetName():
-		if err := h.gaugeStorage.SetString(metricName, metricValue); err != nil {
+		if err := h.gaugeStorage.SetString(ctx, metricName, metricValue); err != nil {
 			c.Status(http.StatusBadRequest)
 			return
 		}
 
 	case h.counterStorage.GetName():
-		if err := h.counterStorage.SetString(metricName, metricValue); err != nil {
+		if err := h.counterStorage.SetString(ctx, metricName, metricValue); err != nil {
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -118,6 +121,8 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 }
 
 func (h *Handler) handleUpdateJSON(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var metric model.Metrics
 	message, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -151,12 +156,12 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		if err := h.gaugeStorage.Set(metric.ID, *metric.Value); err != nil {
+		if err := h.gaugeStorage.Set(ctx, metric.ID, *metric.Value); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 
-		newValue, err := h.gaugeStorage.Get(metric.ID)
+		newValue, err := h.gaugeStorage.Get(ctx, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
 			return
@@ -174,12 +179,12 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		if err := h.counterStorage.Set(metric.ID, *metric.Delta); err != nil {
+		if err := h.counterStorage.Set(ctx, metric.ID, *metric.Delta); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 
-		newValue, err := h.counterStorage.Get(metric.ID)
+		newValue, err := h.counterStorage.Get(ctx, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
 			return
@@ -200,6 +205,8 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 }
 
 func (h *Handler) handleValue(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var metricType string
 	if metricType = c.Param("type"); metricType == "" {
 		c.Status(http.StatusBadRequest)
@@ -214,7 +221,7 @@ func (h *Handler) handleValue(c *gin.Context) {
 
 	switch metricType {
 	case h.gaugeStorage.GetName():
-		value, err := h.gaugeStorage.GetString(metricName)
+		value, err := h.gaugeStorage.GetString(ctx, metricName)
 		if err != nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -223,7 +230,7 @@ func (h *Handler) handleValue(c *gin.Context) {
 		return
 
 	case h.counterStorage.GetName():
-		value, err := h.counterStorage.GetString(metricName)
+		value, err := h.counterStorage.GetString(ctx, metricName)
 		if err != nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -238,6 +245,8 @@ func (h *Handler) handleValue(c *gin.Context) {
 }
 
 func (h *Handler) handleValueJSON(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var metric model.Metrics
 	message, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -263,7 +272,7 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 
 	switch metric.Type {
 	case h.gaugeStorage.GetName():
-		value, err := h.gaugeStorage.Get(metric.ID)
+		value, err := h.gaugeStorage.Get(ctx, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
 			return
@@ -271,7 +280,7 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 		metric.Value = &value
 
 	case h.counterStorage.GetName():
-		value, err := h.counterStorage.Get(metric.ID)
+		value, err := h.counterStorage.Get(ctx, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
 			return
@@ -287,13 +296,15 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 }
 
 func (h *Handler) handleHTML(c *gin.Context) {
-	gaugesStats, err := h.gaugeStorage.GetAllString()
+	ctx := c.Request.Context()
+
+	gaugesStats, err := h.gaugeStorage.GetAllString(ctx)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	counterStats, err := h.counterStorage.GetAllString()
+	counterStats, err := h.counterStorage.GetAllString(ctx)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -344,12 +355,7 @@ func (h *Handler) mapToHTML(m map[string]string) string {
 }
 
 func (h *Handler) ping(c *gin.Context) {
-	ctx := c.Request.Context()
-	if h.db == nil {
-		c.Status(http.StatusServiceUnavailable)
-	}
-
-	err := h.db.Ping(ctx)
+	err := h.db.Ping()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to database"})
 		return

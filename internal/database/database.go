@@ -2,30 +2,43 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
-	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 )
 
 type Driver interface {
-	Ping(ctx context.Context) error
+	Ping() error
 	Close() error
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 }
 
 type DB struct {
 	dsn string
-	*sqlx.DB
+	DB  *sql.DB
 }
 
-func New(dsn string) Driver {
+func New(dsn string) *DB {
 	return &DB{dsn: dsn}
 }
 
 func (db *DB) checkConn(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	var err error
 
 	if db.DB == nil {
-		db.DB, err = sqlx.ConnectContext(ctx, "postgres", db.dsn)
+		db.DB, err = sql.Open("postgres", db.dsn)
+		if err != nil {
+			return err
+		}
+
+		err = db.DB.PingContext(ctx)
 		if err != nil {
 			return err
 		}
@@ -34,12 +47,12 @@ func (db *DB) checkConn(ctx context.Context) error {
 	return nil
 }
 
-func (db *DB) Ping(ctx context.Context) error {
-	if err := db.checkConn(ctx); err != nil {
+func (db *DB) Ping() error {
+	if err := db.checkConn(context.Background()); err != nil {
 		return err
 	}
 
-	return db.DB.PingContext(ctx)
+	return db.DB.Ping()
 }
 
 func (db *DB) Close() error {
@@ -48,4 +61,45 @@ func (db *DB) Close() error {
 	}
 
 	return db.DB.Close()
+}
+
+func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	result, err := func() (sql.Result, error) {
+		if err := db.checkConn(ctx); err != nil {
+			return nil, err
+		}
+
+		return db.DB.ExecContext(ctx, query, args...)
+	}()
+
+	var rows int64
+	if err == nil {
+		rows, _ = result.RowsAffected()
+	}
+
+	logger.Log.Info("DB Exec", logger.Any("query", query), logger.Any("args", args), logger.Any("rows", rows), logger.Error(err))
+
+	return result, err
+}
+
+func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	result, err := func() (*sql.Rows, error) {
+		if err := db.checkConn(ctx); err != nil {
+			return nil, err
+		}
+
+		return db.DB.QueryContext(ctx, query, args...)
+	}()
+
+	var rows int
+	if err == nil {
+		columns, err := result.Columns()
+		if err == nil {
+			rows = len(columns)
+		}
+	}
+
+	logger.Log.Info("DB Query", logger.Any("query", query), logger.Any("args", args), logger.Any("rows", rows), logger.Error(err))
+
+	return result, err
 }

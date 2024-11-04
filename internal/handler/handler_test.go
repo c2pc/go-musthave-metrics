@@ -3,8 +3,8 @@ package handler_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/c2pc/go-musthave-metrics/internal/database/mocks"
-	"github.com/c2pc/go-musthave-metrics/internal/model"
-	"github.com/golang/mock/gomock"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
@@ -28,12 +28,19 @@ func TestNewHandler(t *testing.T) {
 	type args struct {
 		gaugeStorage   handler.Storager[float64]
 		counterStorage handler.Storager[int64]
-		db             handler.DBDriver
+		db             handler.Pinger
 	}
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	tests := []struct {
 		name    string
@@ -50,28 +57,28 @@ func TestNewHandler(t *testing.T) {
 		{
 			name: "empty gauge storage",
 			args: args{
-				nil, storage.NewCounterStorage(), m,
+				nil, counterStorage, m,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "empty counter storage",
 			args: args{
-				storage.NewGaugeStorage(), nil, m,
+				gaugeStorage, nil, m,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "empty db",
 			args: args{
-				storage.NewGaugeStorage(), storage.NewCounterStorage(), nil,
+				gaugeStorage, counterStorage, nil,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "success",
 			args: args{
-				storage.NewGaugeStorage(), storage.NewCounterStorage(), m,
+				gaugeStorage, counterStorage, m,
 			},
 			wantErr: assert.NoError,
 		},
@@ -87,12 +94,16 @@ func TestNewHandler(t *testing.T) {
 }
 
 func TestMetricHandler_HandleUpdate(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -144,12 +155,16 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 }
 
 func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -230,13 +245,13 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 
 				switch tt.data.Type {
 				case gaugeStorage.GetName():
-					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					value, err := gaugeStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.data.Value, value)
 					assert.NotEmpty(t, *metrics.Value)
 					assert.Equal(t, tt.data.Value, *metrics.Value)
 				case counterStorage.GetName():
-					value, err := counterStorage.Get(tt.data.ID.(string))
+					value, err := counterStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.data.Delta, value)
 					assert.NotEmpty(t, *metrics.Delta)
@@ -252,12 +267,16 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 }
 
 func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -342,7 +361,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 				assert.Equal(t, data.ID, metrics.ID)
 				assert.Equal(t, data.Type, metrics.Type)
 
-				value, err := gaugeStorage.Get(data.ID)
+				value, err := gaugeStorage.Get(context.Background(), data.ID)
 				require.NoError(t, err)
 				assert.Equal(t, data.Value, value)
 				assert.NotEmpty(t, *metrics.Value)
@@ -355,12 +374,16 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValue(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -405,13 +428,13 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 					value, err := strconv.ParseFloat(tt.expectedBody, 64)
 					require.NoError(t, err)
 
-					err = gaugeStorage.Set(split[3], value)
+					err = gaugeStorage.Set(context.Background(), split[3], value)
 					require.NoError(t, err)
 				} else if split[2] == "counter" {
 					value, err := strconv.ParseInt(tt.expectedBody, 10, 64)
 					require.NoError(t, err)
 
-					err = counterStorage.Set(split[3], value)
+					err = counterStorage.Set(context.Background(), split[3], value)
 					require.NoError(t, err)
 				}
 			}
@@ -460,12 +483,16 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValueJSON(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -517,10 +544,10 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.expectedBody != nil {
 				if tt.data.Type == "gauge" {
-					err = gaugeStorage.Set(tt.data.ID.(string), tt.expectedBody.Value.(float64))
+					err = gaugeStorage.Set(context.Background(), tt.data.ID.(string), tt.expectedBody.Value.(float64))
 					require.NoError(t, err)
 				} else if tt.data.Type == "counter" {
-					err = counterStorage.Set(tt.data.ID.(string), tt.expectedBody.Delta.(int64))
+					err = counterStorage.Set(context.Background(), tt.data.ID.(string), tt.expectedBody.Delta.(int64))
 					require.NoError(t, err)
 				}
 			}
@@ -556,13 +583,13 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 
 				switch tt.data.Type {
 				case gaugeStorage.GetName():
-					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					value, err := gaugeStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectedBody.Value, value)
 					assert.NotEmpty(t, *metrics.Value)
 					assert.Equal(t, tt.expectedBody.Value, *metrics.Value)
 				case counterStorage.GetName():
-					value, err := counterStorage.Get(tt.data.ID.(string))
+					value, err := counterStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectedBody.Delta, value)
 					assert.NotEmpty(t, *metrics.Delta)
@@ -580,12 +607,16 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -614,7 +645,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 
 			buf := new(bytes.Buffer)
 
-			err = gaugeStorage.Set(data.ID, tt.value)
+			err = gaugeStorage.Set(context.Background(), data.ID, tt.value)
 			require.NoError(t, err)
 
 			out, err := json.Marshal(data)
@@ -669,7 +700,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 				assert.Equal(t, data.ID, metrics.ID)
 				assert.Equal(t, data.Type, metrics.Type)
 
-				value, err := gaugeStorage.Get(data.ID)
+				value, err := gaugeStorage.Get(context.Background(), data.ID)
 				require.NoError(t, err)
 				assert.Equal(t, tt.value, value)
 				assert.NotEmpty(t, *metrics.Value)
@@ -681,12 +712,16 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	}
 }
 func TestMetricHandler_HandleAll(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -722,13 +757,13 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 						value, err := strconv.ParseFloat(split[2], 64)
 						require.NoError(t, err)
 
-						err = gaugeStorage.Set(split[1], value)
+						err = gaugeStorage.Set(context.Background(), split[1], value)
 						require.NoError(t, err)
 					} else if split[2] == "counter" {
 						value, err := strconv.ParseInt(split[2], 10, 64)
 						require.NoError(t, err)
 
-						err = counterStorage.Set(split[1], value)
+						err = counterStorage.Set(context.Background(), split[1], value)
 						require.NoError(t, err)
 					}
 				}
@@ -754,12 +789,16 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 }
 
 func TestMetricHandler_HandleAll_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	ctrl := gomock.NewController(t)
-	m := mocks.NewMockDriver(ctrl)
-	defer ctrl.Finish()
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
 
 	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
@@ -775,7 +814,7 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err = gaugeStorage.Set("id", 10)
+			err = gaugeStorage.Set(context.Background(), "id", 10)
 			require.NoError(t, err)
 
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -806,13 +845,26 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 }
 
 func TestMetricHandler_Ping(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	m, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	db := database.DB{DB: m}
+
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, &db)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name           string
 		method         string
-		db             *mocks.MockDriver
+		mockgen        func()
 		expectedStatus int
 	}{
 		{"Post", http.MethodPost, nil, http.StatusNotFound},
@@ -824,29 +876,20 @@ func TestMetricHandler_Ping(t *testing.T) {
 		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
 		{"Head", http.MethodHead, nil, http.StatusNotFound},
 
-		{"No Ping", http.MethodGet, func() *mocks.MockDriver {
-			_m := mocks.NewMockDriver(ctrl)
-			_m.EXPECT().Ping(gomock.Any()).Return(errors.New("ping error"))
-			return _m
-		}(), http.StatusInternalServerError},
+		{"No Ping", http.MethodGet, func() {
+			mock.ExpectPing().WillReturnError(fmt.Errorf("ping error"))
+		}, http.StatusInternalServerError},
 
-		{"Success", http.MethodGet, func() *mocks.MockDriver {
-			_m := mocks.NewMockDriver(ctrl)
-			_m.EXPECT().Ping(gomock.Any()).Return(nil)
-			return _m
-		}(), http.StatusOK},
+		{"Success", http.MethodGet, func() {
+			mock.ExpectPing().WillReturnError(nil)
+		}, http.StatusOK},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := tt.db
-			if tt.db == nil {
-				m = mocks.NewMockDriver(ctrl)
+			if tt.mockgen != nil {
+				tt.mockgen()
 			}
-
-			handler2, err := handler.NewHandler(storage.NewGaugeStorage(), storage.NewCounterStorage(), m)
-			require.NoError(t, err)
-
 			request := httptest.NewRequest(tt.method, "/ping", nil)
 
 			w := httptest.NewRecorder()

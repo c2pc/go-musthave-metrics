@@ -10,16 +10,15 @@ import (
 )
 
 const (
-	defaultServerAddress   = "localhost:8080"
-	defaultStoreInterval   = 300
-	defaultFileStoragePath = "tmp/metric.tmp"
-	defaultRestore         = true
+	defaultServerAddress = "localhost:8080"
+	defaultStoreInterval = 300
+	defaultRestore       = true
 )
 
 var (
 	address         = flag.String("a", defaultServerAddress, "The Address of the server")
 	storeInterval   = flag.Int64("i", defaultStoreInterval, "The interval, in seconds, of the file store")
-	fileStoragePath = flag.String("f", defaultFileStoragePath, "The path to the file storage")
+	fileStoragePath = flag.String("f", "", "The path to the file storage")
 	restore         = flag.Bool("r", defaultRestore, "The restore flag")
 	databaseDSN     = flag.String("d", "", "The database DSN")
 )

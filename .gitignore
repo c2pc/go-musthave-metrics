@@ -17,7 +17,6 @@ cmd/agent/agent
 cmd/server/main
 cmd/server/server
 tmp
-metricstest-darwin-arm64
 
 # Dependency directories (remove the comment below to include it)
 vendor/

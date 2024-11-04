@@ -1,24 +1,29 @@
 package storage_test
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCounterStorage_GetName(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
 	if counterStorage.GetName() != "counter" {
 		t.Error("Counter storage name not set properly")
 	}
 }
 
-func TestCounterStorage_Set(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+func TestCounterStorage_Set_Memory(t *testing.T) {
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 	tests := []struct {
 		name  string
 		key   string
@@ -53,18 +58,74 @@ func TestCounterStorage_Set(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := counterStorage.Set(tt.key, tt.value)
+			err := counterStorage.Set(context.Background(), tt.key, tt.value)
 			assert.NoError(t, err)
 
-			got, err := counterStorage.Get(tt.key)
+			got, err := counterStorage.Get(context.Background(), tt.key)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.got, got)
 		})
 	}
 }
 
+func TestCounterStorage_Set_DB(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mockDB.Close()
+
+	counterStorage, err := storage.NewCounterStorage(storage.TypeDB, &database.DB{DB: mockDB})
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		key     string
+		value   int64
+		err     error
+		mockgen func()
+	}{
+		{
+			name:  "Error",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("some error"),
+			mockgen: func() {
+				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
+					WithArgs("key1", 10).
+					WillReturnError(errors.New("some error"))
+			},
+		},
+		{
+			name:  "Success",
+			key:   "key2",
+			value: 11,
+			err:   nil,
+			mockgen: func() {
+				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
+					WithArgs("key2", 11).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockgen()
+
+			err = counterStorage.Set(context.Background(), tt.key, tt.value)
+			if tt.err == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.EqualError(t, tt.err, err.Error())
+			}
+		})
+	}
+}
+
 func TestCounterStorage_SetString(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 	tests := []struct {
 		name          string
 		key           string
@@ -111,22 +172,23 @@ func TestCounterStorage_SetString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := counterStorage.SetString(tt.key, tt.value)
+			err := counterStorage.SetString(context.Background(), tt.key, tt.value)
 			if tt.expectedError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 			}
 
-			got, err := counterStorage.Get(tt.key)
+			got, err := counterStorage.Get(context.Background(), tt.key)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.got, got)
 		})
 	}
 }
 
-func TestCounterStorage_GetKey(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+func TestCounterStorage_GetKey_Memory(t *testing.T) {
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name  string
@@ -166,11 +228,11 @@ func TestCounterStorage_GetKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), tt.key, tt.value)
 				assert.NoError(t, err)
 			}
 
-			got, err := counterStorage.Get(tt.key)
+			got, err := counterStorage.Get(context.Background(), tt.key)
 			if !tt.set {
 				assert.Error(t, err)
 			} else {
@@ -180,8 +242,65 @@ func TestCounterStorage_GetKey(t *testing.T) {
 	}
 }
 
+func TestCounterStorage_GetKey_DB(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mockDB.Close()
+
+	counterStorage, err := storage.NewCounterStorage(storage.TypeDB, &database.DB{DB: mockDB})
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		key     string
+		value   int64
+		err     error
+		mockgen func()
+	}{
+		{
+			name:  "Error",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("some error"),
+			mockgen: func() {
+				mock.ExpectQuery("^SELECT (.+) FROM counters WHERE (.+) LIMIT 1$").
+					WithArgs("key1").
+					WillReturnError(errors.New("some error"))
+			},
+		},
+		{
+			name:  "Success",
+			key:   "key2",
+			value: 11,
+			err:   nil,
+			mockgen: func() {
+				mock.ExpectQuery("^SELECT (.+) FROM counters WHERE (.+) LIMIT 1$").
+					WithArgs("key2").
+					WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(11))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockgen()
+
+			value, err := counterStorage.Get(context.Background(), tt.key)
+			if tt.err == nil {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.value, value)
+			} else {
+				assert.EqualError(t, tt.err, err.Error())
+			}
+		})
+	}
+}
+
 func TestCounterStorage_GetString(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name  string
@@ -221,11 +340,11 @@ func TestCounterStorage_GetString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), tt.key, tt.value)
 				assert.NoError(t, err)
 			}
 
-			got, err := counterStorage.GetString(tt.key)
+			got, err := counterStorage.GetString(context.Background(), tt.key)
 			if !tt.set {
 				assert.Error(t, err)
 			} else {
@@ -235,8 +354,9 @@ func TestCounterStorage_GetString(t *testing.T) {
 	}
 }
 
-func TestCounterStorage_GetAll(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+func TestCounterStorage_GetAll_Memory(t *testing.T) {
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name  string
@@ -284,23 +404,81 @@ func TestCounterStorage_GetAll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), tt.key, tt.value)
 				assert.NoError(t, err)
 			}
 
-			got, err := counterStorage.GetAll()
+			got, err := counterStorage.GetAll(context.Background())
 			assert.NoError(t, err)
 
 			eq := reflect.DeepEqual(tt.got, got)
 			if !eq {
-				t.Errorf("PollStats() = %v, want %v", got, tt.got)
+				t.Errorf("got %v, want %v", got, tt.got)
+			}
+		})
+	}
+}
+
+func TestCounterStorage_GetAll_DB(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mockDB.Close()
+
+	counterStorage, err := storage.NewCounterStorage(storage.TypeDB, &database.DB{DB: mockDB})
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		key     string
+		value   map[string]int64
+		err     error
+		mockgen func()
+	}{
+		{
+			name:  "Error",
+			key:   "key1",
+			value: nil,
+			err:   errors.New("some error"),
+			mockgen: func() {
+				mock.ExpectQuery("^SELECT (.+) FROM counters$").
+					WillReturnError(errors.New("some error"))
+			},
+		},
+		{
+			name:  "Success",
+			key:   "key2",
+			value: map[string]int64{"key1": 10, "key2": 20},
+			err:   nil,
+			mockgen: func() {
+				mock.ExpectQuery("^SELECT (.+) FROM counters$").
+					WillReturnRows(sqlmock.NewRows([]string{"key", "value"}).AddRow("key1", 10).AddRow("key2", 20))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockgen()
+
+			value, err := counterStorage.GetAll(context.Background())
+			if tt.err == nil {
+				assert.NoError(t, err)
+				eq := reflect.DeepEqual(tt.value, value)
+				if !eq {
+					t.Errorf("got %v, want %v", value, tt.value)
+				}
+			} else {
+				assert.EqualError(t, tt.err, err.Error())
 			}
 		})
 	}
 }
 
 func TestCounterStorage_GetAllString(t *testing.T) {
-	counterStorage := storage.NewCounterStorage()
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name  string
@@ -348,16 +526,16 @@ func TestCounterStorage_GetAllString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), tt.key, tt.value)
 				assert.NoError(t, err)
 			}
 
-			got, err := counterStorage.GetAllString()
+			got, err := counterStorage.GetAllString(context.Background())
 			assert.NoError(t, err)
 
 			eq := reflect.DeepEqual(tt.got, got)
 			if !eq {
-				t.Errorf("PollStats() = %v, want %v", got, tt.got)
+				t.Errorf("got %v, want %v", got, tt.got)
 			}
 		})
 	}
