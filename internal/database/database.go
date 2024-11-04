@@ -7,11 +7,16 @@ import (
 	_ "github.com/lib/pq"
 )
 
+type Driver interface {
+	Ping(ctx context.Context) error
+	Close() error
+}
+
 type DB struct {
 	*sqlx.DB
 }
 
-func Connect(ctx context.Context, dsn string) (*DB, error) {
+func Connect(ctx context.Context, dsn string) (Driver, error) {
 	db, err := sqlx.ConnectContext(ctx, "postgres", dsn)
 	if err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/c2pc/go-musthave-metrics/internal/database/mocks"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,7 +28,13 @@ func TestNewHandler(t *testing.T) {
 	type args struct {
 		gaugeStorage   handler.Storager[float64]
 		counterStorage handler.Storager[int64]
+		db             handler.DBDriver
 	}
+
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
 	tests := []struct {
 		name    string
 		args    args
@@ -34,35 +43,42 @@ func TestNewHandler(t *testing.T) {
 		{
 			name: "empty storages",
 			args: args{
-				nil, nil,
+				nil, nil, nil,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "empty gauge storage",
 			args: args{
-				nil, storage.NewCounterStorage(),
+				nil, storage.NewCounterStorage(), m,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "empty counter storage",
 			args: args{
-				storage.NewGaugeStorage(), nil,
+				storage.NewGaugeStorage(), nil, m,
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "empty db",
+			args: args{
+				storage.NewGaugeStorage(), storage.NewCounterStorage(), nil,
 			},
 			wantErr: assert.Error,
 		},
 		{
 			name: "success",
 			args: args{
-				storage.NewGaugeStorage(), storage.NewCounterStorage(),
+				storage.NewGaugeStorage(), storage.NewCounterStorage(), m,
 			},
 			wantErr: assert.NoError,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler.NewHandler(tt.args.gaugeStorage, tt.args.counterStorage)
+			_, err := handler.NewHandler(tt.args.gaugeStorage, tt.args.counterStorage, tt.args.db)
 			if !tt.wantErr(t, err, fmt.Sprintf("NewHandler(%v, %v)", tt.args.gaugeStorage, tt.args.counterStorage)) {
 				return
 			}
@@ -74,7 +90,11 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -127,7 +147,11 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -231,7 +255,11 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -330,7 +358,11 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -431,7 +463,11 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta int64 = -6
@@ -547,7 +583,11 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -644,7 +684,11 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -713,7 +757,11 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockDriver(ctrl)
+	defer ctrl.Finish()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -751,6 +799,62 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
+func TestMetricHandler_Ping(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		name           string
+		method         string
+		db             *mocks.MockDriver
+		expectedStatus int
+	}{
+		{"Post", http.MethodPost, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"No Ping", http.MethodGet, func() *mocks.MockDriver {
+			_m := mocks.NewMockDriver(ctrl)
+			_m.EXPECT().Ping(gomock.Any()).Return(errors.New("ping error"))
+			return _m
+		}(), http.StatusInternalServerError},
+
+		{"Success", http.MethodGet, func() *mocks.MockDriver {
+			_m := mocks.NewMockDriver(ctrl)
+			_m.EXPECT().Ping(gomock.Any()).Return(nil)
+			return _m
+		}(), http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := tt.db
+			if tt.db == nil {
+				m = mocks.NewMockDriver(ctrl)
+			}
+
+			handler2, err := handler.NewHandler(storage.NewGaugeStorage(), storage.NewCounterStorage(), m)
+			require.NoError(t, err)
+
+			request := httptest.NewRequest(tt.method, "/ping", nil)
+
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
 
 			require.NoError(t, result.Body.Close())
 		})

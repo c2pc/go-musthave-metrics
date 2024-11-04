@@ -35,11 +35,15 @@ type Handler struct {
 
 func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db DBDriver) (http.Handler, error) {
 	if counterStorage == nil {
-		return nil, fmt.Errorf("counterStorage is nil")
+		return nil, fmt.Errorf("counterStorage is empty")
 	}
 
 	if gaugeStorage == nil {
-		return nil, fmt.Errorf("gaugeStorage is nil")
+		return nil, fmt.Errorf("gaugeStorage is empty")
+	}
+
+	if db == nil {
+		return nil, fmt.Errorf("database is empty")
 	}
 
 	gin.SetMode(gin.ReleaseMode)
