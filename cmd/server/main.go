@@ -41,12 +41,15 @@ func main() {
 	dbContext, dbCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer dbCancel()
 
-	db, err := database.Connect(dbContext, cfg.DatabaseDSN)
-	if err != nil {
-		logger.Log.Fatal("failed to connect database", logger.Error(err))
-		return
+	var db *database.DB
+	if cfg.DatabaseDSN != "" {
+		db, err := database.Connect(dbContext, cfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Fatal("failed to connect database", logger.Error(err))
+			return
+		}
+		defer db.Close()
 	}
-	defer db.Close()
 
 	gaugeStorage := storage.NewGaugeStorage()
 	counterStorage := storage.NewCounterStorage()
