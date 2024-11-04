@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
 	"github.com/c2pc/go-musthave-metrics/internal/database"
+	"github.com/c2pc/go-musthave-metrics/internal/database/migrate"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
@@ -46,6 +48,23 @@ func main() {
 		memoryType = storage.TypeMemory
 	} else {
 		memoryType = storage.TypeDB
+		err := db.Ping()
+		if err != nil {
+			logger.Log.Fatal("failed to ping database", logger.Error(err))
+			return
+		}
+
+		purl, err := url.Parse(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Fatal("failed to parse database URL", logger.Error(err))
+			return
+		}
+
+		err = migrate.Migrate(db.DB, purl.Path)
+		if err != nil {
+			logger.Log.Fatal("failed to migrate database", logger.Error(err))
+			return
+		}
 	}
 
 	gaugeStorage, err := storage.NewGaugeStorage(memoryType, db)
