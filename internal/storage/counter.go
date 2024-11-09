@@ -54,11 +54,10 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 	}
 
 	var value int64
-	for rows.Next() {
+	if rows.Next() {
 		if err := rows.Scan(&value); err != nil {
 			return 0, err
 		}
-		break
 	}
 
 	return value, nil
@@ -146,7 +145,7 @@ func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, er
 	}
 
 	result := make(map[string]int64)
-	if rows.Next() {
+	for rows.Next() {
 		var key string
 		var value int64
 		if err := rows.Scan(&key, &value); err != nil {
