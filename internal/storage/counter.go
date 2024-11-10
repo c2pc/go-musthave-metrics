@@ -51,13 +51,14 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 		func() error {
 			var err error
 			rows, err = s.db.QueryContext(ctx, `SELECT value FROM counters WHERE key=$1 LIMIT 1`, key)
-			return err
+			if err != nil {
+				return err
+			}
+
+			return rows.Err()
 		},
 		func(err error) bool {
-			if errors.Is(err, driver.ErrBadConn) {
-				return true
-			}
-			return false
+			return errors.Is(err, driver.ErrBadConn)
 		},
 		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 	)
@@ -65,10 +66,6 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 		return 0, err
 	}
 	defer rows.Close()
-
-	if rows.Err() != nil {
-		return 0, rows.Err()
-	}
 
 	var value int64
 	if rows.Next() {
@@ -130,10 +127,7 @@ func (s *CounterStorage) saveInDB(ctx context.Context, values ...Valuer[int64]) 
 				return err
 			},
 			func(err error) bool {
-				if errors.Is(err, driver.ErrBadConn) {
-					return true
-				}
-				return false
+				return errors.Is(err, driver.ErrBadConn)
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		)
@@ -189,13 +183,14 @@ func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, er
 		func() error {
 			var err error
 			rows, err = s.db.QueryContext(ctx, `SELECT key, value FROM counters`)
-			return err
+			if err != nil {
+				return err
+			}
+
+			return rows.Err()
 		},
 		func(err error) bool {
-			if errors.Is(err, driver.ErrBadConn) {
-				return true
-			}
-			return false
+			return errors.Is(err, driver.ErrBadConn)
 		},
 		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 	)
@@ -203,10 +198,6 @@ func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, er
 		return nil, err
 	}
 	defer rows.Close()
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
 
 	result := make(map[string]int64)
 	for rows.Next() {

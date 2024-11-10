@@ -50,13 +50,14 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 		func() error {
 			var err error
 			rows, err = s.db.QueryContext(ctx, `SELECT value FROM gauges WHERE key=$1 LIMIT 1`, key)
-			return err
+			if err != nil {
+				return err
+			}
+
+			return rows.Err()
 		},
 		func(err error) bool {
-			if errors.Is(err, driver.ErrBadConn) {
-				return true
-			}
-			return false
+			return errors.Is(err, driver.ErrBadConn)
 		},
 		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 	)
@@ -64,10 +65,6 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 		return 0, err
 	}
 	defer rows.Close()
-
-	if rows.Err() != nil {
-		return 0, rows.Err()
-	}
 
 	var value float64
 	if rows.Next() {
@@ -129,10 +126,7 @@ func (s *GaugeStorage) saveInDB(ctx context.Context, values ...Valuer[float64]) 
 				return err
 			},
 			func(err error) bool {
-				if errors.Is(err, driver.ErrBadConn) {
-					return true
-				}
-				return false
+				return errors.Is(err, driver.ErrBadConn)
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		)
@@ -188,13 +182,14 @@ func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, er
 		func() error {
 			var err error
 			rows, err = s.db.QueryContext(ctx, `SELECT key, value FROM gauges`)
-			return err
+			if err != nil {
+				return err
+			}
+
+			return rows.Err()
 		},
 		func(err error) bool {
-			if errors.Is(err, driver.ErrBadConn) {
-				return true
-			}
-			return false
+			return errors.Is(err, driver.ErrBadConn)
 		},
 		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 	)
@@ -202,10 +197,6 @@ func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, er
 		return nil, err
 	}
 	defer rows.Close()
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
 
 	result := make(map[string]float64)
 	for rows.Next() {

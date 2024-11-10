@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var MaxAttemptsError = fmt.Errorf("max attempts exceeded")
+var ErrMaxAttempts = fmt.Errorf("max attempts exceeded error")
 
 func Retry(fn func() error, needRetry func(error) bool, delays []time.Duration) error {
 	for attempts := 0; attempts < len(delays); attempts++ {
@@ -19,11 +19,11 @@ func Retry(fn func() error, needRetry func(error) bool, delays []time.Duration) 
 				time.Sleep(delays[attempts])
 				continue
 			}
-			return errors.Join(MaxAttemptsError, err)
+			return errors.Join(ErrMaxAttempts, err)
 		} else {
 			return err
 		}
 	}
 
-	return MaxAttemptsError
+	return ErrMaxAttempts
 }
