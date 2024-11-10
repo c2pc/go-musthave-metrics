@@ -102,7 +102,7 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		})
 	}
 
-	if counters != nil && len(counters) > 0 {
+	if len(counters) > 0 {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
@@ -114,7 +114,7 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		}()
 	}
 
-	if gauges != nil && len(gauges) > 0 {
+	if len(gauges) > 0 {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()

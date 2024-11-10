@@ -340,6 +340,7 @@ func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
 
 			result := w.Result()
 			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+			result.Body.Close()
 		})
 	}
 }
