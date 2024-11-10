@@ -393,15 +393,15 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 
 			if tt.compress {
 				zb := gzip.NewWriter(buf)
-				defer zb.Close() // Закрываем gzip.Writer в конце функции
+				defer zb.Close()
 
 				_, err = zb.Write(out)
 				require.NoError(t, err)
 
-				err = zb.Close() // Обязательно закрываем после записи
+				err = zb.Close()
 				require.NoError(t, err)
 			} else {
-				buf.Write(out) // Если не сжимаем, просто добавляем данные
+				buf.Write(out)
 			}
 
 			request := httptest.NewRequest(http.MethodPost, "/update/", buf)
@@ -732,15 +732,15 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 
 			if tt.compress {
 				zb := gzip.NewWriter(buf)
-				defer zb.Close() // Закрываем gzip.Writer в конце функции
+				defer zb.Close()
 
 				_, err = zb.Write(out)
 				require.NoError(t, err)
 
-				err = zb.Close() // Обязательно закрываем после записи
+				err = zb.Close()
 				require.NoError(t, err)
 			} else {
-				buf.Write(out) // Если не сжимаем, просто добавляем данные
+				buf.Write(out)
 			}
 
 			request := httptest.NewRequest(http.MethodPost, "/value/", buf)

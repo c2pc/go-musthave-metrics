@@ -144,11 +144,7 @@ func (s *GaugeStorage) saveInMemory(values ...Valuer[float64]) error {
 	defer s.mu.Unlock()
 
 	for _, value := range values {
-		if val, ok := s.storage[value.GetKey()]; ok {
-			s.storage[value.GetKey()] = val + value.GetValue()
-		} else {
-			s.storage[value.GetKey()] = value.GetValue()
-		}
+		s.storage[value.GetKey()] = value.GetValue()
 	}
 
 	return nil
