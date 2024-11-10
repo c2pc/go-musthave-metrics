@@ -10,13 +10,6 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 )
 
-type Driver interface {
-	Ping() error
-	Close() error
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-}
-
 type DB struct {
 	dsn string
 	DB  *sql.DB
@@ -102,4 +95,8 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{
 	logger.Log.Info("DB Query", logger.Any("query", query), logger.Any("args", args), logger.Any("rows", rows), logger.Error(err))
 
 	return result, err
+}
+
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return db.DB.BeginTx(ctx, opts)
 }

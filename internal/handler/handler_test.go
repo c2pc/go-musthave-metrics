@@ -266,6 +266,84 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	require.NoError(t, err)
+
+	var defaultDelta, defaultDelta2 int64 = 10, -6
+	var defaultValue, defaultValue2 float64 = 10, 0.5
+
+	type data struct {
+		ID    interface{} `json:"id"`
+		Type  interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           []data
+		expectedStatus int
+	}{
+		{"Get", http.MethodGet, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
+		{"Empty type", http.MethodPost, []data{{ID: "id", Type: "", Delta: defaultDelta, Value: defaultValue}}, http.StatusBadRequest},
+		{"Empty name", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusNotFound},
+		{"Empty name2", http.MethodPost, []data{{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}}, http.StatusNotFound},
+		{"Empty name3", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}}, http.StatusNotFound},
+		{"Empty value", http.MethodPost, []data{{ID: "id1", Type: "counter", Delta: nil, Value: nil}}, http.StatusBadRequest},
+		{"Empty value2", http.MethodPost, []data{{ID: "id2", Type: "gauge", Delta: nil, Value: nil}}, http.StatusBadRequest},
+
+		{"Invalid type", http.MethodPost, []data{{ID: "id3", Type: "invalid", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, []data{{ID: "id3", Type: "gauge", Value: "invalid"}}, http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, []data{{ID: "id3", Type: "counter", Delta: "invalid"}}, http.StatusBadRequest},
+
+		{"Success Gauge", http.MethodPost, []data{{ID: "id2", Type: "gauge", Value: defaultValue2}}, http.StatusOK},
+		{"Success Counter", http.MethodPost, []data{{ID: "id3", Type: "counter", Delta: defaultDelta2}}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/updates/", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+		})
+	}
+}
+
 func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
@@ -428,13 +506,13 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 					value, err := strconv.ParseFloat(tt.expectedBody, 64)
 					require.NoError(t, err)
 
-					err = gaugeStorage.Set(context.Background(), split[3], value)
+					err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: split[3], Value: value})
 					require.NoError(t, err)
 				} else if split[2] == "counter" {
 					value, err := strconv.ParseInt(tt.expectedBody, 10, 64)
 					require.NoError(t, err)
 
-					err = counterStorage.Set(context.Background(), split[3], value)
+					err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: split[3], Value: value})
 					require.NoError(t, err)
 				}
 			}
@@ -544,10 +622,10 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.expectedBody != nil {
 				if tt.data.Type == "gauge" {
-					err = gaugeStorage.Set(context.Background(), tt.data.ID.(string), tt.expectedBody.Value.(float64))
+					err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.data.ID.(string), Value: tt.expectedBody.Value.(float64)})
 					require.NoError(t, err)
 				} else if tt.data.Type == "counter" {
-					err = counterStorage.Set(context.Background(), tt.data.ID.(string), tt.expectedBody.Delta.(int64))
+					err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.data.ID.(string), Value: tt.expectedBody.Delta.(int64)})
 					require.NoError(t, err)
 				}
 			}
@@ -645,7 +723,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 
 			buf := new(bytes.Buffer)
 
-			err = gaugeStorage.Set(context.Background(), data.ID, tt.value)
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: data.ID, Value: tt.value})
 			require.NoError(t, err)
 
 			out, err := json.Marshal(data)
@@ -757,13 +835,13 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 						value, err := strconv.ParseFloat(split[2], 64)
 						require.NoError(t, err)
 
-						err = gaugeStorage.Set(context.Background(), split[1], value)
+						err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: split[1], Value: value})
 						require.NoError(t, err)
 					} else if split[2] == "counter" {
 						value, err := strconv.ParseInt(split[2], 10, 64)
 						require.NoError(t, err)
 
-						err = counterStorage.Set(context.Background(), split[1], value)
+						err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: split[1], Value: value})
 						require.NoError(t, err)
 					}
 				}
@@ -814,7 +892,7 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err = gaugeStorage.Set(context.Background(), "id", 10)
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: "id", Value: 10})
 			require.NoError(t, err)
 
 			request := httptest.NewRequest(http.MethodGet, "/", nil)

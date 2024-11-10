@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strconv"
 	"sync"
-
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
 )
 
 type GaugeStorage struct {
@@ -16,7 +14,7 @@ type GaugeStorage struct {
 	db          Driver
 }
 
-func NewGaugeStorage(storageType Type, db Driver) (handler.Storager[float64], error) {
+func NewGaugeStorage(storageType Type, db Driver) (*GaugeStorage, error) {
 	if !storageType.IsValid() {
 		return nil, errors.New("invalid storage type")
 	}
@@ -57,6 +55,8 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 		if err := rows.Scan(&value); err != nil {
 			return 0, err
 		}
+	} else {
+		return 0, errors.New("not found")
 	}
 
 	return value, nil
@@ -83,40 +83,62 @@ func (s *GaugeStorage) GetString(ctx context.Context, key string) (string, error
 	return s.toString(value)
 }
 
-func (s *GaugeStorage) Set(ctx context.Context, key string, value float64) error {
+func (s *GaugeStorage) Set(ctx context.Context, values ...Valuer[float64]) error {
+	if len(values) == 0 {
+		return nil
+	}
+
 	switch s.storageType {
 	case TypeDB:
-		return s.saveInDB(ctx, key, value)
+		return s.saveInDB(ctx, values...)
 	default:
-		return s.saveInMemory(key, value)
+		return s.saveInMemory(values...)
 	}
 }
 
-func (s *GaugeStorage) saveInDB(ctx context.Context, key string, value float64) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO gauges (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
+func (s *GaugeStorage) saveInDB(ctx context.Context, values ...Valuer[float64]) error {
+	db, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	for _, value := range values {
+		_, err := s.db.ExecContext(ctx,
+			`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
+		if err != nil {
+			err2 := db.Rollback()
+			if err2 != nil {
+				return err2
+			}
+			return err
+		}
+	}
+
+	return db.Commit()
 }
 
-func (s *GaugeStorage) saveInMemory(key string, value float64) error {
+func (s *GaugeStorage) saveInMemory(values ...Valuer[float64]) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.storage[key] = value
+	for _, value := range values {
+		s.storage[value.GetKey()] = value.GetValue()
+	}
 
 	return nil
 }
 
-func (s *GaugeStorage) SetString(ctx context.Context, key string, value string) error {
-	val, err := s.parseString(value)
-	if err != nil {
-		return err
+func (s *GaugeStorage) SetString(ctx context.Context, values ...Valuer[string]) error {
+	vs := make([]Valuer[float64], len(values))
+	for i, value := range values {
+		val, err := s.parseString(value.GetValue())
+		if err != nil {
+			return err
+		}
+		vs[i] = Value[float64]{Key: value.GetKey(), Value: val}
 	}
 
-	return s.Set(ctx, key, val)
+	return s.Set(ctx, vs...)
 }
 
 func (s *GaugeStorage) GetAll(ctx context.Context) (map[string]float64, error) {

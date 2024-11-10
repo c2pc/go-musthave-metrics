@@ -59,7 +59,7 @@ func TestGaugeStorage_Set_Memory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := gaugeStorage.Set(context.Background(), tt.key, tt.value)
+			err := gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 			assert.NoError(t, err)
 
 			got, err := gaugeStorage.Get(context.Background(), tt.key)
@@ -87,14 +87,47 @@ func TestGaugeStorage_Set_DB(t *testing.T) {
 		mockgen func()
 	}{
 		{
+			name:  "Error -> Begin",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("begin some error"),
+			mockgen: func() {
+				mock.ExpectBegin().WillReturnError(errors.New("begin some error"))
+			},
+		},
+		{
+			name:  "Error -> Rollback",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("rollback some error"),
+			mockgen: func() {
+				mock.ExpectBegin()
+				mock.ExpectRollback().WillReturnError(errors.New("rollback some error"))
+			},
+		},
+		{
+			name:  "Error -> Commit",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("commit some error"),
+			mockgen: func() {
+				mock.ExpectBegin()
+				mock.ExpectExec("^INSERT INTO gauges (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
+					WithArgs("key1", float64(10)).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit().WillReturnError(errors.New("commit some error"))
+			},
+		},
+		{
 			name:  "Error",
 			key:   "key1",
 			value: 10,
 			err:   errors.New("some error"),
 			mockgen: func() {
+				mock.ExpectBegin()
 				mock.ExpectExec("^INSERT INTO gauges (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
 					WithArgs("key1", float64(10)).
 					WillReturnError(errors.New("some error"))
+				mock.ExpectRollback().WillReturnError(nil)
 			},
 		},
 		{
@@ -103,9 +136,11 @@ func TestGaugeStorage_Set_DB(t *testing.T) {
 			value: 11,
 			err:   nil,
 			mockgen: func() {
+				mock.ExpectBegin()
 				mock.ExpectExec("^INSERT INTO gauges (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
 					WithArgs("key2", float64(11)).
 					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit().WillReturnError(nil)
 			},
 		},
 	}
@@ -114,7 +149,7 @@ func TestGaugeStorage_Set_DB(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.mockgen()
 
-			err = gaugeStorage.Set(context.Background(), tt.key, tt.value)
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 			if tt.err == nil {
 				assert.NoError(t, err)
 			} else {
@@ -173,7 +208,7 @@ func TestGaugeStorage_SetString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := gaugeStorage.SetString(context.Background(), tt.key, tt.value)
+			err := gaugeStorage.SetString(context.Background(), storage.Value[string]{Key: tt.key, Value: tt.value})
 			if tt.expectedError {
 				assert.Error(t, err)
 				return
@@ -230,7 +265,7 @@ func TestGaugeStorage_GetKey_Memory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := gaugeStorage.Set(context.Background(), tt.key, tt.value)
+				err := gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -342,7 +377,7 @@ func TestGaugeStorage_GetString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := gaugeStorage.Set(context.Background(), tt.key, tt.value)
+				err := gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -406,7 +441,7 @@ func TestGaugeStorage_GetAll_Memory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := gaugeStorage.Set(context.Background(), tt.key, tt.value)
+				err := gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -528,7 +563,7 @@ func TestGaugeStorage_GetAllString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := gaugeStorage.Set(context.Background(), tt.key, tt.value)
+				err := gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 

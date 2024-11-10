@@ -10,7 +10,7 @@ import (
 )
 
 type Updater interface {
-	UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error)
+	UpdateMetric(ctx context.Context, metrics []model.Metrics) error
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -83,29 +83,46 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 	logger.Log.Info("Starting reporting metrics...")
 	waitGroup := sync.WaitGroup{}
 
+	var counters []model.Metrics
 	for key, value := range r.counterMetric.GetStats() {
+		counters = append(counters, model.Metrics{
+			ID:    key,
+			Type:  r.counterMetric.GetName(),
+			Delta: &value,
+		})
+
+	}
+
+	var gauges []model.Metrics
+	for key, value := range r.gaugeMetric.GetStats() {
+		gauges = append(gauges, model.Metrics{
+			ID:    key,
+			Type:  r.gaugeMetric.GetName(),
+			Value: &value,
+		})
+	}
+
+	if counters != nil && len(counters) > 0 {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			metric, err := r.client.UpdateMetric(ctx, r.counterMetric.GetName(), key, value)
+			err := r.client.UpdateMetric(ctx, counters)
 			if err != nil {
-				logger.Log.Info("Error updating counter metric", logger.Any("key", key), logger.Error(err))
+				logger.Log.Info("Error updating counters metric", logger.Error(err))
 				return
 			}
-			logger.Log.Info("Update Counter metric", logger.Any("key", key), logger.Any("value", value), logger.Any("response", metric))
 		}()
 	}
 
-	for key, value := range r.gaugeMetric.GetStats() {
+	if gauges != nil && len(gauges) > 0 {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			metric, err := r.client.UpdateMetric(ctx, r.gaugeMetric.GetName(), key, value)
+			err := r.client.UpdateMetric(ctx, gauges)
 			if err != nil {
-				logger.Log.Info("Error updating gauge metric", logger.Any("key", key), logger.Error(err))
+				logger.Log.Info("Error updating gauge metric", logger.Error(err))
 				return
 			}
-			logger.Log.Info("Update Gauge metric", logger.Any("key", key), logger.Any("value", value), logger.Any("response", metric))
 		}()
 	}
 

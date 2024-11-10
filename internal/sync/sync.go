@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 const (
@@ -21,7 +23,7 @@ type Storager interface {
 	GetName() string
 	GetString(ctx context.Context, key string) (string, error)
 	GetAllString(ctx context.Context) (map[string]string, error)
-	SetString(ctx context.Context, key string, value string) error
+	SetString(ctx context.Context, values ...storage.Valuer[string]) error
 }
 
 type Sync struct {
@@ -184,11 +186,22 @@ func (s *Sync) readDataFromStorage(ctx context.Context) ([]column, error) {
 }
 
 func (s *Sync) writeDataToStorage(ctx context.Context, data ...column) error {
+	columns := map[string][]storage.Valuer[string]{}
+
 	for _, d := range data {
 		if _, ok := s.storages[d.name]; !ok {
 			return fmt.Errorf("storage %s not found", d.name)
 		}
-		err := s.storages[d.name].SetString(ctx, d.key, d.value)
+
+		if _, ok := columns[d.name]; !ok {
+			columns[d.name] = []storage.Valuer[string]{}
+		}
+
+		columns[d.name] = append(columns[d.name], storage.Value[string]{Key: d.key, Value: d.value})
+	}
+
+	for key, value := range columns {
+		err := s.storages[key].SetString(ctx, value...)
 		if err != nil {
 			return err
 		}

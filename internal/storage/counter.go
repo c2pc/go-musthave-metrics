@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-
-	"github.com/c2pc/go-musthave-metrics/internal/handler"
 )
 
 type CounterStorage struct {
@@ -17,7 +15,7 @@ type CounterStorage struct {
 	db          Driver
 }
 
-func NewCounterStorage(storageType Type, db Driver) (handler.Storager[int64], error) {
+func NewCounterStorage(storageType Type, db Driver) (*CounterStorage, error) {
 	if !storageType.IsValid() {
 		return nil, errors.New("invalid storage type")
 	}
@@ -58,6 +56,8 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 		if err := rows.Scan(&value); err != nil {
 			return 0, err
 		}
+	} else {
+		return 0, errors.New("not found")
 	}
 
 	return value, nil
@@ -84,44 +84,66 @@ func (s *CounterStorage) GetString(ctx context.Context, key string) (string, err
 	return s.toString(value)
 }
 
-func (s *CounterStorage) Set(ctx context.Context, key string, value int64) error {
+func (s *CounterStorage) Set(ctx context.Context, values ...Valuer[int64]) error {
+	if len(values) == 0 {
+		return nil
+	}
+
 	switch s.storageType {
 	case TypeDB:
-		return s.saveInDB(ctx, key, value)
+		return s.saveInDB(ctx, values...)
 	default:
-		return s.saveInMemory(key, value)
+		return s.saveInMemory(values...)
 	}
 }
 
-func (s *CounterStorage) saveInDB(ctx context.Context, key string, value int64) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO counters (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = counters.value + excluded.value`, key, value)
+func (s *CounterStorage) saveInDB(ctx context.Context, values ...Valuer[int64]) error {
+	db, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	for _, value := range values {
+		_, err := s.db.ExecContext(ctx,
+			`INSERT INTO counters (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = counters.value + excluded.value`, value.GetKey(), value.GetValue())
+		if err != nil {
+			err2 := db.Rollback()
+			if err2 != nil {
+				return err2
+			}
+			return err
+		}
+	}
+
+	return db.Commit()
 }
 
-func (s *CounterStorage) saveInMemory(key string, value int64) error {
+func (s *CounterStorage) saveInMemory(values ...Valuer[int64]) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if val, ok := s.storage[key]; ok {
-		s.storage[key] = val + value
-	} else {
-		s.storage[key] = value
+	for _, value := range values {
+		if val, ok := s.storage[value.GetKey()]; ok {
+			s.storage[value.GetKey()] = val + value.GetValue()
+		} else {
+			s.storage[value.GetKey()] = value.GetValue()
+		}
 	}
 
 	return nil
 }
 
-func (s *CounterStorage) SetString(ctx context.Context, key string, value string) error {
-	val, err := s.parseString(value)
-	if err != nil {
-		return err
+func (s *CounterStorage) SetString(ctx context.Context, values ...Valuer[string]) error {
+	vs := make([]Valuer[int64], len(values))
+	for i, value := range values {
+		val, err := s.parseString(value.GetValue())
+		if err != nil {
+			return err
+		}
+		vs[i] = Value[int64]{Key: value.GetKey(), Value: val}
 	}
 
-	return s.Set(ctx, key, val)
+	return s.Set(ctx, vs...)
 }
 
 func (s *CounterStorage) GetAll(ctx context.Context) (map[string]int64, error) {

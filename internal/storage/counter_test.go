@@ -58,7 +58,7 @@ func TestCounterStorage_Set_Memory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := counterStorage.Set(context.Background(), tt.key, tt.value)
+			err := counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 			assert.NoError(t, err)
 
 			got, err := counterStorage.Get(context.Background(), tt.key)
@@ -86,14 +86,47 @@ func TestCounterStorage_Set_DB(t *testing.T) {
 		mockgen func()
 	}{
 		{
+			name:  "Error -> Begin",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("begin some error"),
+			mockgen: func() {
+				mock.ExpectBegin().WillReturnError(errors.New("begin some error"))
+			},
+		},
+		{
+			name:  "Error -> Rollback",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("rollback some error"),
+			mockgen: func() {
+				mock.ExpectBegin()
+				mock.ExpectRollback().WillReturnError(errors.New("rollback some error"))
+			},
+		},
+		{
+			name:  "Error -> Commit",
+			key:   "key1",
+			value: 10,
+			err:   errors.New("commit some error"),
+			mockgen: func() {
+				mock.ExpectBegin()
+				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
+					WithArgs("key1", 10).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit().WillReturnError(errors.New("commit some error"))
+			},
+		},
+		{
 			name:  "Error",
 			key:   "key1",
 			value: 10,
 			err:   errors.New("some error"),
 			mockgen: func() {
+				mock.ExpectBegin()
 				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
 					WithArgs("key1", 10).
 					WillReturnError(errors.New("some error"))
+				mock.ExpectRollback().WillReturnError(nil)
 			},
 		},
 		{
@@ -102,9 +135,11 @@ func TestCounterStorage_Set_DB(t *testing.T) {
 			value: 11,
 			err:   nil,
 			mockgen: func() {
+				mock.ExpectBegin()
 				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
 					WithArgs("key2", 11).
 					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit().WillReturnError(nil)
 			},
 		},
 	}
@@ -113,7 +148,7 @@ func TestCounterStorage_Set_DB(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.mockgen()
 
-			err = counterStorage.Set(context.Background(), tt.key, tt.value)
+			err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 			if tt.err == nil {
 				assert.NoError(t, err)
 			} else {
@@ -172,7 +207,7 @@ func TestCounterStorage_SetString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := counterStorage.SetString(context.Background(), tt.key, tt.value)
+			err := counterStorage.SetString(context.Background(), storage.Value[string]{Key: tt.key, Value: tt.value})
 			if tt.expectedError {
 				assert.Error(t, err)
 			} else {
@@ -228,7 +263,7 @@ func TestCounterStorage_GetKey_Memory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(context.Background(), tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -340,7 +375,7 @@ func TestCounterStorage_GetString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(context.Background(), tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -404,7 +439,7 @@ func TestCounterStorage_GetAll_Memory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(context.Background(), tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 
@@ -526,7 +561,7 @@ func TestCounterStorage_GetAllString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set {
-				err := counterStorage.Set(context.Background(), tt.key, tt.value)
+				err := counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.key, Value: tt.value})
 				assert.NoError(t, err)
 			}
 

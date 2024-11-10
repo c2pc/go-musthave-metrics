@@ -7,5 +7,5 @@ CREATE TABLE IF NOT EXISTS gauges
 CREATE TABLE IF NOT EXISTS counters
 (
     key   VARCHAR(64) UNIQUE NOT NULL,
-    value INT   NOT NULL
+    value BIGINT   NOT NULL
 );

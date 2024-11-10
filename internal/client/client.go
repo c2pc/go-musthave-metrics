@@ -5,8 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -29,34 +28,20 @@ func NewClient(serverAddr string) reporter.Updater {
 	}
 }
 
-func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value interface{}) (*model.Metrics, error) {
-	metricRequest := model.Metrics{
-		ID:   name,
-		Type: tp,
-	}
-
-	switch val := value.(type) {
-	case int64:
-		metricRequest.Delta = &val
-	case float64:
-		metricRequest.Value = &val
-	default:
-		return nil, errors.New("invalid metric value type")
-	}
-
-	body, err := json.Marshal(metricRequest)
+func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) error {
+	body, err := json.Marshal(metrics)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Сжимаем данные в формате gzip
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if _, err := gz.Write(body); err != nil {
-		return nil, err
+		return err
 	}
 	if err := gz.Close(); err != nil {
-		return nil, err
+		return err
 	}
 
 	client := &http.Client{
@@ -64,7 +49,7 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", &buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
@@ -72,33 +57,13 @@ func (c *Client) UpdateMetric(ctx context.Context, tp string, name string, value
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer response.Body.Close()
 
-	var respBody []byte
-	if response.Header.Get("Content-Encoding") == "gzip" {
-		reader, err := gzip.NewReader(response.Body)
-		if err != nil {
-			return nil, err
-		}
-		defer reader.Close()
-
-		respBody, err = io.ReadAll(reader)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		respBody, err = io.ReadAll(response.Body)
-		if err != nil {
-			return nil, err
-		}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
-	var metricRes model.Metrics
-	if err := json.Unmarshal(respBody, &metricRes); err != nil {
-		return nil, err
-	}
-
-	return &metricRes, nil
+	return nil
 }
