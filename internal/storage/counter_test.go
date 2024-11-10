@@ -98,9 +98,11 @@ func TestCounterStorage_Set_DB(t *testing.T) {
 			name:  "Error -> Rollback",
 			key:   "key1",
 			value: 10,
-			err:   errors.New("rollback some error"),
+			err:   errors.New("some error"),
 			mockgen: func() {
 				mock.ExpectBegin()
+				mock.ExpectExec("^INSERT INTO counters (.+) VALUES (.+) ON CONFLICT (.+) DO UPDATE SET (.+)$").
+					WithArgs("key1", 10).WillReturnError(errors.New("some error"))
 				mock.ExpectRollback().WillReturnError(errors.New("rollback some error"))
 			},
 		},

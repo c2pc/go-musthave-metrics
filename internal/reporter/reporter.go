@@ -2,11 +2,14 @@ package reporter
 
 import (
 	"context"
+	"errors"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
+	"github.com/c2pc/go-musthave-metrics/internal/retry"
 )
 
 type Updater interface {
@@ -106,7 +109,7 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			err := r.client.UpdateMetric(ctx, counters)
+			err := r.updateMetrics(ctx, counters)
 			if err != nil {
 				logger.Log.Info("Error updating counters metric", logger.Error(err))
 				return
@@ -118,7 +121,7 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			err := r.client.UpdateMetric(ctx, gauges)
+			err := r.updateMetrics(ctx, gauges)
 			if err != nil {
 				logger.Log.Info("Error updating gauge metric", logger.Error(err))
 				return
@@ -129,4 +132,20 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 	waitGroup.Wait()
 
 	logger.Log.Info("Finish reporting metrics...")
+}
+
+func (r *Reporter) updateMetrics(ctx context.Context, metrics []model.Metrics) error {
+	return retry.Retry(
+		func() error {
+			return r.client.UpdateMetric(ctx, metrics)
+		},
+		func(err error) bool {
+			var netErr net.Error
+			if errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded) {
+				return true
+			}
+			return false
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	)
 }

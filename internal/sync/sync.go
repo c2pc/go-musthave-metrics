@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/c2pc/go-musthave-metrics/internal/retry"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
@@ -217,13 +219,32 @@ func (s *Sync) openFile(filePath string) error {
 		return err
 	}
 
-	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	var file *os.File
+	err := retry.Retry(
+		func() error {
+			var err error
+			file, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func(err error) bool {
+			var pathError *os.PathError
+			if errors.As(err, &pathError) {
+				if errors.Is(pathError.Err, syscall.EACCES) {
+					return true
+				}
+			}
+			return false
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	)
 	if err != nil {
 		return err
 	}
 
 	s.file = file
-
 	return nil
 }
 

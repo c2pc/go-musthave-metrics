@@ -2,9 +2,14 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"strconv"
 	"sync"
+	"time"
+
+	"github.com/c2pc/go-musthave-metrics/internal/retry"
 )
 
 type GaugeStorage struct {
@@ -40,7 +45,21 @@ func (s *GaugeStorage) Get(ctx context.Context, key string) (float64, error) {
 }
 
 func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT value FROM gauges WHERE key=$1 LIMIT 1`, key)
+	var rows *sql.Rows
+	err := retry.Retry(
+		func() error {
+			var err error
+			rows, err = s.db.QueryContext(ctx, `SELECT value FROM gauges WHERE key=$1 LIMIT 1`, key)
+			return err
+		},
+		func(err error) bool {
+			if errors.Is(err, driver.ErrBadConn) {
+				return true
+			}
+			return false
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -103,13 +122,22 @@ func (s *GaugeStorage) saveInDB(ctx context.Context, values ...Valuer[float64]) 
 	}
 
 	for _, value := range values {
-		_, err := s.db.ExecContext(ctx,
-			`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
+		err := retry.Retry(
+			func() error {
+				_, err := s.db.ExecContext(ctx,
+					`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
+				return err
+			},
+			func(err error) bool {
+				if errors.Is(err, driver.ErrBadConn) {
+					return true
+				}
+				return false
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		)
 		if err != nil {
-			err2 := db.Rollback()
-			if err2 != nil {
-				return err2
-			}
+			_ = db.Rollback()
 			return err
 		}
 	}
@@ -122,7 +150,11 @@ func (s *GaugeStorage) saveInMemory(values ...Valuer[float64]) error {
 	defer s.mu.Unlock()
 
 	for _, value := range values {
-		s.storage[value.GetKey()] = value.GetValue()
+		if val, ok := s.storage[value.GetKey()]; ok {
+			s.storage[value.GetKey()] = val + value.GetValue()
+		} else {
+			s.storage[value.GetKey()] = value.GetValue()
+		}
 	}
 
 	return nil
@@ -151,7 +183,21 @@ func (s *GaugeStorage) GetAll(ctx context.Context) (map[string]float64, error) {
 }
 
 func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM gauges`)
+	var rows *sql.Rows
+	err := retry.Retry(
+		func() error {
+			var err error
+			rows, err = s.db.QueryContext(ctx, `SELECT key, value FROM gauges`)
+			return err
+		},
+		func(err error) bool {
+			if errors.Is(err, driver.ErrBadConn) {
+				return true
+			}
+			return false
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	)
 	if err != nil {
 		return nil, err
 	}
