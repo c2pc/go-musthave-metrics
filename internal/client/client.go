@@ -47,7 +47,7 @@ func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) erro
 	client := &http.Client{
 		Timeout: 1 * time.Second,
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/update/", &buf)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/updates/", &buf)
 	if err != nil {
 		return err
 	}
