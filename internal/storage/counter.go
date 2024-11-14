@@ -15,7 +15,7 @@ import (
 
 type CounterStorage struct {
 	storageType Type
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	storage     map[string]int64
 	db          Driver
 }
@@ -80,8 +80,8 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 }
 
 func (s *CounterStorage) getFromMemory(key string) (int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	value, ok := s.storage[key]
 	if !ok {
@@ -213,8 +213,8 @@ func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, er
 }
 
 func (s *CounterStorage) getAllFromMemory() (map[string]int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RLock()
 
 	return s.storage, nil
 }

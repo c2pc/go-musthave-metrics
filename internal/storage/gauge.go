@@ -14,7 +14,7 @@ import (
 
 type GaugeStorage struct {
 	storageType Type
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	storage     map[string]float64
 	db          Driver
 }
@@ -79,8 +79,8 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 }
 
 func (s *GaugeStorage) getFromMemory(key string) (float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	value, ok := s.storage[key]
 	if !ok {
@@ -208,8 +208,8 @@ func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, er
 }
 
 func (s *GaugeStorage) getAllFromMemory() (map[string]float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return s.storage, nil
 }
