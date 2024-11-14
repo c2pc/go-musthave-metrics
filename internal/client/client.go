@@ -14,6 +14,8 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
+const requestTimeout = 1 * time.Second
+
 type Client struct {
 	serverAddr string
 }
@@ -45,7 +47,7 @@ func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) erro
 	}
 
 	client := &http.Client{
-		Timeout: 1 * time.Second,
+		Timeout: requestTimeout,
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/updates/", &buf)
 	if err != nil {
