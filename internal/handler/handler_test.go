@@ -62,8 +62,8 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 		{"Empty value2", http.MethodPost, "/update/gauge/metric", http.StatusNotFound},
 
 		{"Invalid type", http.MethodPost, "/update/invalid/metric/12", http.StatusBadRequest},
-		{"Invalid value", http.MethodPost, "/update/gauge/metric/invalid", http.StatusBadRequest},
-		{"Invalid value2", http.MethodPost, "/update/counter/metric/invalid", http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, "/update/gauge/metric/invalid", http.StatusInternalServerError},
+		{"Invalid value2", http.MethodPost, "/update/counter/metric/invalid", http.StatusInternalServerError},
 
 		{"Success Gauge", http.MethodPost, "/update/gauge/metric/1", http.StatusOK},
 		{"Success Counter", http.MethodPost, "/update/counter/metric/1", http.StatusOK},
@@ -239,9 +239,9 @@ func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
 
 		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
 		{"Empty type", http.MethodPost, []data{{ID: "id", Type: "", Delta: defaultDelta, Value: defaultValue}}, http.StatusBadRequest},
-		{"Empty name", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusNotFound},
-		{"Empty name2", http.MethodPost, []data{{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}}, http.StatusNotFound},
-		{"Empty name3", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}}, http.StatusNotFound},
+		{"Empty name", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Empty name2", http.MethodPost, []data{{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Empty name3", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}}, http.StatusBadRequest},
 		{"Empty value", http.MethodPost, []data{{ID: "id1", Type: "counter", Delta: nil, Value: nil}}, http.StatusBadRequest},
 		{"Empty value2", http.MethodPost, []data{{ID: "id2", Type: "gauge", Delta: nil, Value: nil}}, http.StatusBadRequest},
 

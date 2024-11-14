@@ -93,13 +93,13 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		if err := h.gaugeStorage.SetString(ctx, storage.Value[string]{Key: metricName, Value: metricValue}); err != nil {
-			c.Status(http.StatusBadRequest)
+			c.Status(http.StatusInternalServerError)
 			return
 		}
 
 	case h.counterStorage.GetName():
 		if err := h.counterStorage.SetString(ctx, storage.Value[string]{Key: metricName, Value: metricValue}); err != nil {
-			c.Status(http.StatusBadRequest)
+			c.Status(http.StatusInternalServerError)
 			return
 		}
 
@@ -148,13 +148,13 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		}
 
 		if err := h.gaugeStorage.Set(ctx, storage.Value[float64]{Key: metric.ID, Value: *metric.Value}); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 
 		newValue, err := h.gaugeStorage.Get(ctx, metric.ID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get metric value"})
 			return
 		}
 
@@ -171,13 +171,13 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		}
 
 		if err := h.counterStorage.Set(ctx, storage.Value[int64]{Key: metric.ID, Value: *metric.Delta}); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 
 		newValue, err := h.counterStorage.Get(ctx, metric.ID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get metric value"})
 			return
 		}
 
@@ -220,7 +220,7 @@ func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 		}
 
 		if metric.ID == "" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "The metric id is empty"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "The metric id is empty"})
 			return
 		}
 
@@ -246,7 +246,7 @@ func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 	if len(gauges) > 0 {
 		err := h.gaugeStorage.Set(ctx, gauges...)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 	}
@@ -254,7 +254,7 @@ func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 	if len(counters) > 0 {
 		err := h.counterStorage.Set(ctx, counters...)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to set metric value"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
 	}
