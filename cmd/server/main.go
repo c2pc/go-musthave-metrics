@@ -37,7 +37,6 @@ func main() {
 	cfg, err := config.Parse()
 	if err != nil {
 		logger.Log.Fatal("failed to parse config", logger.Error(err))
-		return
 	}
 
 	db := database.New(cfg.DatabaseDSN)
@@ -51,31 +50,26 @@ func main() {
 		err := db.Ping()
 		if err != nil {
 			logger.Log.Fatal("failed to ping database", logger.Error(err))
-			return
 		}
 
 		purl, err := url.Parse(cfg.DatabaseDSN)
 		if err != nil {
 			logger.Log.Fatal("failed to parse database URL", logger.Error(err))
-			return
 		}
 
 		err = migrate.Migrate(db.DB, purl.Path)
 		if err != nil {
 			logger.Log.Fatal("failed to migrate database", logger.Error(err))
-			return
 		}
 	}
 
 	gaugeStorage, err := storage.NewGaugeStorage(memoryType, db)
 	if err != nil {
 		logger.Log.Fatal("failed to initialize gaugeStorage", logger.Error(err))
-		return
 	}
 	counterStorage, err := storage.NewCounterStorage(memoryType, db)
 	if err != nil {
 		logger.Log.Fatal("failed to initialize counterStorage", logger.Error(err))
-		return
 	}
 
 	if cfg.FileStoragePath != "" && cfg.DatabaseDSN == "" {
@@ -86,7 +80,6 @@ func main() {
 		}, gaugeStorage, counterStorage)
 		if err != nil {
 			logger.Log.Fatal("failed to start syncer", logger.Error(err))
-			return
 		}
 		defer syncer.Close()
 	}

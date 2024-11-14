@@ -31,7 +31,6 @@ func main() {
 	cfg, err := config.Parse()
 	if err != nil {
 		logger.Log.Fatal("failed to parse config", logger.Error(err))
-		return
 	}
 
 	counterMetric := metric.NewCounterMetric()
