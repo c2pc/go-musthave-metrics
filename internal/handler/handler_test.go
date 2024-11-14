@@ -62,8 +62,8 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 		{"Empty value2", http.MethodPost, "/update/gauge/metric", http.StatusNotFound},
 
 		{"Invalid type", http.MethodPost, "/update/invalid/metric/12", http.StatusBadRequest},
-		{"Invalid value", http.MethodPost, "/update/gauge/metric/invalid", http.StatusInternalServerError},
-		{"Invalid value2", http.MethodPost, "/update/counter/metric/invalid", http.StatusInternalServerError},
+		{"Invalid value", http.MethodPost, "/update/gauge/metric/invalid", http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, "/update/counter/metric/invalid", http.StatusBadRequest},
 
 		{"Success Gauge", http.MethodPost, "/update/gauge/metric/1", http.StatusOK},
 		{"Success Counter", http.MethodPost, "/update/counter/metric/1", http.StatusOK},

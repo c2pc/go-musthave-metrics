@@ -57,7 +57,7 @@ func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, erro
 			return 0, err
 		}
 	} else {
-		return 0, errors.New("not found")
+		return 0, ErrNotFound
 	}
 
 	return value, nil
@@ -69,7 +69,7 @@ func (s *GaugeStorage) getFromMemory(key string) (float64, error) {
 
 	value, ok := s.storage[key]
 	if !ok {
-		return 0, errors.New("not found")
+		return 0, ErrNotFound
 	}
 
 	return value, nil
@@ -81,7 +81,12 @@ func (s *GaugeStorage) GetString(ctx context.Context, key string) (string, error
 		return "", err
 	}
 
-	return s.toString(value)
+	str, err := s.toString(value)
+	if err != nil {
+		return "", errors.Join(err, ErrInvalidValue)
+	}
+
+	return str, nil
 }
 
 func (s *GaugeStorage) Set(ctx context.Context, values ...Valuer[float64]) error {
@@ -106,7 +111,6 @@ func (s *GaugeStorage) saveInDB(ctx context.Context, values ...Valuer[float64]) 
 	for _, value := range values {
 		_, err = s.db.ExecContext(ctx,
 			`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
-
 		if err != nil {
 			_ = db.Rollback()
 			return err
@@ -132,7 +136,7 @@ func (s *GaugeStorage) SetString(ctx context.Context, values ...Valuer[string]) 
 	for i, value := range values {
 		val, err := s.parseString(value.GetValue())
 		if err != nil {
-			return err
+			return errors.Join(err, ErrInvalidValue)
 		}
 		vs[i] = Value[float64]{Key: value.GetKey(), Value: val}
 	}
@@ -191,7 +195,7 @@ func (s *GaugeStorage) GetAllString(ctx context.Context) (map[string]string, err
 	for k, v := range all {
 		str, err := s.toString(v)
 		if err != nil {
-			return nil, err
+			return nil, ErrInvalidValue
 		}
 		response[k] = str
 	}

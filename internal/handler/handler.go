@@ -97,12 +97,22 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 	switch metricType {
 	case h.gaugeStorage.GetName():
 		if err := h.gaugeStorage.SetString(ctx, storage.Value[string]{Key: metricName, Value: metricValue}); err != nil {
+			if errors.Is(err, storage.ErrInvalidValue) {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 
 	case h.counterStorage.GetName():
 		if err := h.counterStorage.SetString(ctx, storage.Value[string]{Key: metricName, Value: metricValue}); err != nil {
+			if errors.Is(err, storage.ErrInvalidValue) {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -160,6 +170,11 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
+			if errors.Is(err, storage.ErrInvalidValue) {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
@@ -191,6 +206,11 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
+			if errors.Is(err, storage.ErrInvalidValue) {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
@@ -325,7 +345,12 @@ func (h *Handler) handleValue(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
-			c.Status(http.StatusNotFound)
+			if errors.Is(err, storage.ErrNotFound) {
+				c.Status(http.StatusNotFound)
+				return
+			}
+
+			c.Status(http.StatusInternalServerError)
 			return
 		}
 
@@ -343,7 +368,12 @@ func (h *Handler) handleValue(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
-			c.Status(http.StatusNotFound)
+			if errors.Is(err, storage.ErrNotFound) {
+				c.Status(http.StatusNotFound)
+				return
+			}
+
+			c.Status(http.StatusInternalServerError)
 			return
 		}
 
@@ -395,7 +425,12 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+			if errors.Is(err, storage.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get metric value"})
 			return
 		}
 		metric.Value = &value
@@ -412,7 +447,12 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 			},
 			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
 		); err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+			if errors.Is(err, storage.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get metric value"})
 			return
 		}
 		metric.Delta = &value

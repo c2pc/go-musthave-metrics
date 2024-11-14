@@ -58,7 +58,7 @@ func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, erro
 			return 0, err
 		}
 	} else {
-		return 0, errors.New("not found")
+		return 0, ErrNotFound
 	}
 
 	return value, nil
@@ -70,7 +70,7 @@ func (s *CounterStorage) getFromMemory(key string) (int64, error) {
 
 	value, ok := s.storage[key]
 	if !ok {
-		return 0, errors.New("not found")
+		return 0, ErrNotFound
 	}
 
 	return value, nil
@@ -82,7 +82,12 @@ func (s *CounterStorage) GetString(ctx context.Context, key string) (string, err
 		return "", err
 	}
 
-	return s.toString(value)
+	str, err := s.toString(value)
+	if err != nil {
+		return "", errors.Join(err, ErrInvalidValue)
+	}
+
+	return str, nil
 }
 
 func (s *CounterStorage) Set(ctx context.Context, values ...Valuer[int64]) error {
@@ -107,7 +112,6 @@ func (s *CounterStorage) saveInDB(ctx context.Context, values ...Valuer[int64]) 
 	for _, value := range values {
 		_, err = s.db.ExecContext(ctx,
 			`INSERT INTO counters (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = counters.value + excluded.value`, value.GetKey(), value.GetValue())
-
 		if err != nil {
 			_ = db.Rollback()
 			return err
@@ -137,7 +141,7 @@ func (s *CounterStorage) SetString(ctx context.Context, values ...Valuer[string]
 	for i, value := range values {
 		val, err := s.parseString(value.GetValue())
 		if err != nil {
-			return err
+			return errors.Join(err, ErrInvalidValue)
 		}
 		vs[i] = Value[int64]{Key: value.GetKey(), Value: val}
 	}
@@ -196,7 +200,7 @@ func (s *CounterStorage) GetAllString(ctx context.Context) (map[string]string, e
 	for k, v := range all {
 		str, err := s.toString(v)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, ErrInvalidValue)
 		}
 		response[k] = str
 	}
