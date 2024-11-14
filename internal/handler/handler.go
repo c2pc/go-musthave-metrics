@@ -35,18 +35,7 @@ type Handler struct {
 	db             Pinger
 }
 
-func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger) (http.Handler, error) {
-	if counterStorage == nil {
-		return nil, fmt.Errorf("counterStorage is empty")
-	}
-
-	if gaugeStorage == nil {
-		return nil, fmt.Errorf("gaugeStorage is empty")
-	}
-
-	if db == nil {
-		return nil, fmt.Errorf("database is empty")
-	}
+func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger) http.Handler {
 
 	gin.SetMode(gin.ReleaseMode)
 	handlers := gin.New()
@@ -64,7 +53,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], 
 
 	h.Init(handlers)
 
-	return h, nil
+	return h
 }
 
 func (h *Handler) Init(engine *gin.Engine) {

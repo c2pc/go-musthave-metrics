@@ -24,75 +24,6 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
-func TestNewHandler(t *testing.T) {
-	type args struct {
-		gaugeStorage   handler.Storager[float64]
-		counterStorage handler.Storager[int64]
-		db             handler.Pinger
-	}
-
-	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
-	assert.NoError(t, err)
-	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
-	assert.NoError(t, err)
-
-	m, _, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer m.Close()
-
-	tests := []struct {
-		name    string
-		args    args
-		wantErr assert.ErrorAssertionFunc
-	}{
-		{
-			name: "empty storages",
-			args: args{
-				nil, nil, nil,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "empty gauge storage",
-			args: args{
-				nil, counterStorage, m,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "empty counter storage",
-			args: args{
-				gaugeStorage, nil, m,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "empty db",
-			args: args{
-				gaugeStorage, counterStorage, nil,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "success",
-			args: args{
-				gaugeStorage, counterStorage, m,
-			},
-			wantErr: assert.NoError,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler.NewHandler(tt.args.gaugeStorage, tt.args.counterStorage, tt.args.db)
-			if !tt.wantErr(t, err, fmt.Sprintf("NewHandler(%v, %v)", tt.args.gaugeStorage, tt.args.counterStorage)) {
-				return
-			}
-		})
-	}
-}
-
 func TestMetricHandler_HandleUpdate(t *testing.T) {
 	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
@@ -105,7 +36,7 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -166,7 +97,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -278,7 +209,7 @@ func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -357,7 +288,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -464,7 +395,7 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -573,7 +504,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta int64 = -6
@@ -697,7 +628,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -802,7 +733,7 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -879,7 +810,7 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -937,7 +868,7 @@ func TestMetricHandler_Ping(t *testing.T) {
 	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage, &db)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, &db)
 	require.NoError(t, err)
 
 	tests := []struct {

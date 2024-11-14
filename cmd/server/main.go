@@ -83,10 +83,7 @@ func main() {
 		defer syncer.Close()
 	}
 
-	handlers, err := handler.NewHandler(gaugeStorage, counterStorage, db)
-	if err != nil {
-		logger.Log.Fatal("failed to init handlers", logger.Error(err))
-	}
+	handlers := handler.NewHandler(gaugeStorage, counterStorage, db)
 
 	httpServer := server.NewServer(handlers, cfg.Address)
 
