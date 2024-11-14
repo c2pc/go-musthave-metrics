@@ -2,11 +2,15 @@ package handler
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
+	"github.com/c2pc/go-musthave-metrics/internal/retry"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 	"github.com/gin-gonic/gin"
 
@@ -147,7 +151,15 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		if err := h.gaugeStorage.Set(ctx, storage.Value[float64]{Key: metric.ID, Value: *metric.Value}); err != nil {
+		if err := retry.Retry(
+			func() error {
+				return h.gaugeStorage.Set(ctx, storage.Value[float64]{Key: metric.ID, Value: *metric.Value})
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
@@ -170,7 +182,15 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		if err := h.counterStorage.Set(ctx, storage.Value[int64]{Key: metric.ID, Value: *metric.Delta}); err != nil {
+		if err := retry.Retry(
+			func() error {
+				return h.counterStorage.Set(ctx, storage.Value[int64]{Key: metric.ID, Value: *metric.Delta})
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
@@ -244,16 +264,31 @@ func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 	}
 
 	if len(gauges) > 0 {
-		err := h.gaugeStorage.Set(ctx, gauges...)
-		if err != nil {
+		if err := retry.Retry(
+			func() error {
+				return h.gaugeStorage.Set(ctx, gauges...)
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
+
 	}
 
 	if len(counters) > 0 {
-		err := h.counterStorage.Set(ctx, counters...)
-		if err != nil {
+		if err := retry.Retry(
+			func() error {
+				return h.counterStorage.Set(ctx, counters...)
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
 			return
 		}
@@ -277,22 +312,41 @@ func (h *Handler) handleValue(c *gin.Context) {
 		return
 	}
 
+	var value string
 	switch metricType {
 	case h.gaugeStorage.GetName():
-		value, err := h.gaugeStorage.GetString(ctx, metricName)
-		if err != nil {
+		if err := retry.Retry(
+			func() (err error) {
+				value, err = h.gaugeStorage.GetString(ctx, metricName)
+				return
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.Status(http.StatusNotFound)
 			return
 		}
+
 		c.String(http.StatusOK, value)
 		return
 
 	case h.counterStorage.GetName():
-		value, err := h.counterStorage.GetString(ctx, metricName)
-		if err != nil {
+		if err := retry.Retry(
+			func() (err error) {
+				value, err = h.counterStorage.GetString(ctx, metricName)
+				return
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.Status(http.StatusNotFound)
 			return
 		}
+
 		c.String(http.StatusOK, value)
 		return
 
@@ -330,16 +384,34 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 
 	switch metric.Type {
 	case h.gaugeStorage.GetName():
-		value, err := h.gaugeStorage.Get(ctx, metric.ID)
-		if err != nil {
+		var value float64
+		if err := retry.Retry(
+			func() (err error) {
+				value, err = h.gaugeStorage.Get(ctx, metric.ID)
+				return
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
 			return
 		}
 		metric.Value = &value
 
 	case h.counterStorage.GetName():
-		value, err := h.counterStorage.Get(ctx, metric.ID)
-		if err != nil {
+		var value int64
+		if err := retry.Retry(
+			func() (err error) {
+				value, err = h.counterStorage.Get(ctx, metric.ID)
+				return
+			},
+			func(err error) bool {
+				return errors.Is(err, driver.ErrBadConn)
+			},
+			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+		); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Failed to get metric value"})
 			return
 		}
@@ -356,14 +428,31 @@ func (h *Handler) handleValueJSON(c *gin.Context) {
 func (h *Handler) handleHTML(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	gaugesStats, err := h.gaugeStorage.GetAllString(ctx)
-	if err != nil {
+	var gaugesStats, counterStats map[string]string
+	if err := retry.Retry(
+		func() (err error) {
+			gaugesStats, err = h.gaugeStorage.GetAllString(ctx)
+			return
+		},
+		func(err error) bool {
+			return errors.Is(err, driver.ErrBadConn)
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	); err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	counterStats, err := h.counterStorage.GetAllString(ctx)
-	if err != nil {
+	if err := retry.Retry(
+		func() (err error) {
+			counterStats, err = h.counterStorage.GetAllString(ctx)
+			return
+		},
+		func(err error) bool {
+			return errors.Is(err, driver.ErrBadConn)
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	); err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}

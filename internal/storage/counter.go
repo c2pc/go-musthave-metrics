@@ -2,15 +2,10 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
-
-	"github.com/c2pc/go-musthave-metrics/internal/retry"
 )
 
 type CounterStorage struct {
@@ -29,6 +24,7 @@ func NewCounterStorage(storageType Type, db Driver) (*CounterStorage, error) {
 		storageType: storageType,
 		storage:     make(map[string]int64),
 		db:          db,
+		mu:          sync.RWMutex{},
 	}, nil
 }
 
@@ -46,26 +42,15 @@ func (s *CounterStorage) Get(ctx context.Context, key string) (int64, error) {
 }
 
 func (s *CounterStorage) getFromDB(ctx context.Context, key string) (int64, error) {
-	var rows *sql.Rows
-	err := retry.Retry(
-		func() error {
-			var err error
-			rows, err = s.db.QueryContext(ctx, `SELECT value FROM counters WHERE key=$1 LIMIT 1`, key)
-			if err != nil {
-				return err
-			}
-
-			return rows.Err()
-		},
-		func(err error) bool {
-			return errors.Is(err, driver.ErrBadConn)
-		},
-		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-	)
+	rows, err := s.db.QueryContext(ctx, `SELECT value FROM counters WHERE key=$1 LIMIT 1`, key)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
+
+	if rows.Err() != nil {
+		return 0, rows.Err()
+	}
 
 	var value int64
 	if rows.Next() {
@@ -120,17 +105,9 @@ func (s *CounterStorage) saveInDB(ctx context.Context, values ...Valuer[int64]) 
 	}
 
 	for _, value := range values {
-		err := retry.Retry(
-			func() error {
-				_, err := s.db.ExecContext(ctx,
-					`INSERT INTO counters (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = counters.value + excluded.value`, value.GetKey(), value.GetValue())
-				return err
-			},
-			func(err error) bool {
-				return errors.Is(err, driver.ErrBadConn)
-			},
-			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-		)
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO counters (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = counters.value + excluded.value`, value.GetKey(), value.GetValue())
+
 		if err != nil {
 			_ = db.Rollback()
 			return err
@@ -178,26 +155,15 @@ func (s *CounterStorage) GetAll(ctx context.Context) (map[string]int64, error) {
 }
 
 func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, error) {
-	var rows *sql.Rows
-	err := retry.Retry(
-		func() error {
-			var err error
-			rows, err = s.db.QueryContext(ctx, `SELECT key, value FROM counters`)
-			if err != nil {
-				return err
-			}
-
-			return rows.Err()
-		},
-		func(err error) bool {
-			return errors.Is(err, driver.ErrBadConn)
-		},
-		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-	)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM counters`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
 
 	result := make(map[string]int64)
 	for rows.Next() {
@@ -214,7 +180,7 @@ func (s *CounterStorage) getAllFromDB(ctx context.Context) (map[string]int64, er
 
 func (s *CounterStorage) getAllFromMemory() (map[string]int64, error) {
 	s.mu.RLock()
-	defer s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return s.storage, nil
 }

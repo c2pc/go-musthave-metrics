@@ -2,14 +2,9 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"strconv"
 	"sync"
-	"time"
-
-	"github.com/c2pc/go-musthave-metrics/internal/retry"
 )
 
 type GaugeStorage struct {
@@ -28,6 +23,7 @@ func NewGaugeStorage(storageType Type, db Driver) (*GaugeStorage, error) {
 		storageType: storageType,
 		storage:     make(map[string]float64),
 		db:          db,
+		mu:          sync.RWMutex{},
 	}, nil
 }
 
@@ -45,26 +41,15 @@ func (s *GaugeStorage) Get(ctx context.Context, key string) (float64, error) {
 }
 
 func (s *GaugeStorage) getFromDB(ctx context.Context, key string) (float64, error) {
-	var rows *sql.Rows
-	err := retry.Retry(
-		func() error {
-			var err error
-			rows, err = s.db.QueryContext(ctx, `SELECT value FROM gauges WHERE key=$1 LIMIT 1`, key)
-			if err != nil {
-				return err
-			}
-
-			return rows.Err()
-		},
-		func(err error) bool {
-			return errors.Is(err, driver.ErrBadConn)
-		},
-		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-	)
+	rows, err := s.db.QueryContext(ctx, `SELECT value FROM gauges WHERE key=$1 LIMIT 1`, key)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
+
+	if rows.Err() != nil {
+		return 0, rows.Err()
+	}
 
 	var value float64
 	if rows.Next() {
@@ -119,17 +104,9 @@ func (s *GaugeStorage) saveInDB(ctx context.Context, values ...Valuer[float64]) 
 	}
 
 	for _, value := range values {
-		err := retry.Retry(
-			func() error {
-				_, err := s.db.ExecContext(ctx,
-					`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
-				return err
-			},
-			func(err error) bool {
-				return errors.Is(err, driver.ErrBadConn)
-			},
-			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-		)
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO gauges (key,value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, value.GetKey(), value.GetValue())
+
 		if err != nil {
 			_ = db.Rollback()
 			return err
@@ -173,26 +150,15 @@ func (s *GaugeStorage) GetAll(ctx context.Context) (map[string]float64, error) {
 }
 
 func (s *GaugeStorage) getAllFromDB(ctx context.Context) (map[string]float64, error) {
-	var rows *sql.Rows
-	err := retry.Retry(
-		func() error {
-			var err error
-			rows, err = s.db.QueryContext(ctx, `SELECT key, value FROM gauges`)
-			if err != nil {
-				return err
-			}
-
-			return rows.Err()
-		},
-		func(err error) bool {
-			return errors.Is(err, driver.ErrBadConn)
-		},
-		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-	)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM gauges`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
 
 	result := make(map[string]float64)
 	for rows.Next() {
