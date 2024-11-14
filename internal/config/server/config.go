@@ -16,11 +16,11 @@ const (
 )
 
 var (
-	address         = flag.String("a", defaultServerAddress, "The Address of the server")
-	storeInterval   = flag.Int64("i", defaultStoreInterval, "The interval, in seconds, of the file store")
-	fileStoragePath = flag.String("f", "", "The path to the file storage")
-	restore         = flag.Bool("r", defaultRestore, "The restore flag")
-	databaseDSN     = flag.String("d", "", "The database DSN")
+	address         string
+	storeInterval   int64
+	fileStoragePath string
+	restore         bool
+	databaseDSN     string
 )
 
 type envConfig struct {
@@ -40,6 +40,12 @@ type Config struct {
 }
 
 func Parse() (*Config, error) {
+	flag.StringVar(&address, "a", defaultServerAddress, "The Address of the server")
+	flag.Int64Var(&storeInterval, "i", defaultStoreInterval, "The interval, in seconds, of the file store")
+	flag.StringVar(&fileStoragePath, "f", "", "The path to the file storage")
+	flag.BoolVar(&restore, "r", defaultRestore, "The restore flag")
+	flag.StringVar(&databaseDSN, "d", "", "The database DSN")
+
 	cfg := &Config{}
 
 	flag.Parse()
@@ -60,7 +66,7 @@ func Parse() (*Config, error) {
 	} else if v := os.Getenv("ADDRESS"); v != "" {
 		cfg.Address = v
 	} else {
-		cfg.Address = *address
+		cfg.Address = address
 	}
 
 	//Parsing StoreInterval
@@ -75,7 +81,7 @@ func Parse() (*Config, error) {
 			return nil, fmt.Errorf("failed to parse STORE_INTERVAL: %s", err)
 		}
 	} else {
-		cfg.StoreInterval = *storeInterval
+		cfg.StoreInterval = storeInterval
 	}
 
 	//Parsing FileStoragePath
@@ -84,7 +90,7 @@ func Parse() (*Config, error) {
 	} else if v := os.Getenv("ADDRESS"); v != "" {
 		cfg.FileStoragePath = v
 	} else {
-		cfg.FileStoragePath = *fileStoragePath
+		cfg.FileStoragePath = fileStoragePath
 	}
 
 	//Parsing Restore
@@ -93,13 +99,13 @@ func Parse() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse RESTORE: %s", err)
 		}
-	} else if v := os.Getenv("ADDRESS"); v != "" {
+	} else if v := os.Getenv("RESTORE"); v != "" {
 		cfg.Restore, err = strconv.ParseBool(v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse RESTORE: %s", err)
 		}
 	} else {
-		cfg.Restore = *restore
+		cfg.Restore = restore
 	}
 
 	//Parsing Database DSN
@@ -108,7 +114,7 @@ func Parse() (*Config, error) {
 	} else if v := os.Getenv("DATABASE_DSN"); v != "" {
 		cfg.DatabaseDSN = v
 	} else {
-		cfg.DatabaseDSN = *databaseDSN
+		cfg.DatabaseDSN = databaseDSN
 	}
 
 	return cfg, nil
