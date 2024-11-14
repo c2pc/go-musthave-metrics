@@ -39,18 +39,17 @@ func main() {
 		logger.Log.Fatal("failed to parse config", logger.Error(err))
 	}
 
-	db := database.New(cfg.DatabaseDSN)
-	defer db.Close()
-
+	var db *database.DB
 	var memoryType storage.Type
 	if cfg.DatabaseDSN == "" {
 		memoryType = storage.TypeMemory
 	} else {
 		memoryType = storage.TypeDB
-		err := db.Ping()
+		db, err = database.New(cfg.DatabaseDSN)
 		if err != nil {
-			logger.Log.Fatal("failed to ping database", logger.Error(err))
+			logger.Log.Fatal("failed to connect to database", logger.Error(err))
 		}
+		defer db.Close()
 
 		purl, err := url.Parse(cfg.DatabaseDSN)
 		if err != nil {

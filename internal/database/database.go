@@ -11,39 +11,36 @@ import (
 )
 
 type DB struct {
-	dsn string
-	DB  *sql.DB
+	DB *sql.DB
 }
 
-func New(dsn string) *DB {
-	return &DB{dsn: dsn}
-}
-
-func (db *DB) checkConn(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	var err error
-
-	if db.DB == nil {
-		db.DB, err = sql.Open("postgres", db.dsn)
-		if err != nil {
-			return err
-		}
-
-		err = db.DB.PingContext(ctx)
-		if err != nil {
-			return err
-		}
+func New(dsn string) (*DB, error) {
+	db, err := connect(dsn)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return &DB{DB: db}, nil
+}
+
+func connect(dsn string) (*sql.DB, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.PingContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }
 
 func (db *DB) Ping() error {
-	if err := db.checkConn(context.Background()); err != nil {
-		return err
-	}
 
 	return db.DB.Ping()
 }
@@ -57,13 +54,7 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	result, err := func() (sql.Result, error) {
-		if err := db.checkConn(ctx); err != nil {
-			return nil, err
-		}
-
-		return db.DB.ExecContext(ctx, query, args...)
-	}()
+	result, err := db.DB.ExecContext(ctx, query, args...)
 
 	var rows int64
 	if err == nil {
@@ -76,13 +67,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}
 }
 
 func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	result, err := func() (*sql.Rows, error) {
-		if err := db.checkConn(ctx); err != nil {
-			return nil, err
-		}
-
-		return db.DB.QueryContext(ctx, query, args...)
-	}()
+	result, err := db.DB.QueryContext(ctx, query, args...)
 
 	var rows int
 	if err == nil {
