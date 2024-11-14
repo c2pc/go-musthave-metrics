@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
+	config "github.com/c2pc/go-musthave-metrics/internal/config/server"
 	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/c2pc/go-musthave-metrics/internal/database/migrate"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
