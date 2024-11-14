@@ -40,7 +40,6 @@ type Handler struct {
 }
 
 func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger) http.Handler {
-
 	gin.SetMode(gin.ReleaseMode)
 	handlers := gin.New()
 
@@ -542,6 +541,11 @@ func (h *Handler) mapToHTML(m map[string]string) string {
 }
 
 func (h *Handler) ping(c *gin.Context) {
+	if h.db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database not initialized"})
+		return
+	}
+
 	err := h.db.Ping()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to connect to database"})

@@ -37,7 +37,7 @@ func connect(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	return nil, nil
+	return db, nil
 }
 
 func (db *DB) Ping() error {
