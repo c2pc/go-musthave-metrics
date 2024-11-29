@@ -5,10 +5,9 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/c2pc/go-musthave-metrics/internal/config"
 	"github.com/gin-gonic/gin"
 )
-
-const hashHeader = "HashSHA256"
 
 type Hasher interface {
 	Check([]byte, []byte) (bool, error)
@@ -26,7 +25,7 @@ func (grw *hasherResponseWriter) Write(data []byte) (int, error) {
 		return 0, err
 	}
 
-	grw.Header().Set(hashHeader, hash)
+	grw.Header().Set(config.HashHeader, hash)
 
 	return grw.ResponseWriter.Write(data)
 }
@@ -38,7 +37,7 @@ func HashMiddleware(hasher Hasher) func(*gin.Context) {
 	}
 
 	return func(c *gin.Context) {
-		requestHash := c.Request.Header.Get(hashHeader)
+		requestHash := c.Request.Header.Get(config.HashHeader)
 		if requestHash != "" && needHash {
 			var buf bytes.Buffer
 			blw := &hasherResponseWriter{ResponseWriter: c.Writer, hasher: hasher}

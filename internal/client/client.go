@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/c2pc/go-musthave-metrics/internal/config"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
 const requestTimeout = 1 * time.Second
-const hashHeader = "HashSHA256"
 
 type Hasher interface {
 	Hash([]byte) (string, error)
@@ -65,7 +65,7 @@ func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) erro
 		if err != nil {
 			return err
 		}
-		request.Header.Set(hashHeader, hash)
+		request.Header.Set(config.HashHeader, hash)
 	}
 
 	response, err := client.Do(request)
