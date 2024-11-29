@@ -15,6 +15,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/c2pc/go-musthave-metrics/internal/database/migrate"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/hash"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
@@ -83,7 +84,13 @@ func main() {
 		defer syncer.Close()
 	}
 
-	handlers := handler.NewHandler(gaugeStorage, counterStorage, db)
+	var handlers http.Handler
+	if cfg.HashKey != "" {
+		hasher := hash.New(cfg.HashKey)
+		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, hasher)
+	} else {
+		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, nil)
+	}
 
 	httpServer := server.NewServer(handlers, cfg.Address)
 

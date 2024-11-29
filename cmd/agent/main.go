@@ -9,6 +9,7 @@ import (
 
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
 	config "github.com/c2pc/go-musthave-metrics/internal/config/agent"
+	"github.com/c2pc/go-musthave-metrics/internal/hash"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
@@ -36,7 +37,13 @@ func main() {
 	counterMetric := metric.NewCounterMetric()
 	gaugeMetric := metric.NewGaugeMetric()
 
-	client := cl.NewClient(cfg.ServerAddress)
+	var client reporter.Updater
+	if cfg.HashKey != "" {
+		hasher := hash.New(cfg.HashKey)
+		client = cl.NewClient(cfg.ServerAddress, hasher)
+	} else {
+		client = cl.NewClient(cfg.ServerAddress, nil)
+	}
 
 	var report Reporter = reporter.New(client, reporter.Timer{
 		PollInterval:   cfg.PollInterval,

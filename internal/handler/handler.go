@@ -18,6 +18,11 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/model"
 )
 
+type Hasher interface {
+	Check([]byte, []byte) (bool, error)
+	Hash([]byte) (string, error)
+}
+
 type Storager[T int64 | float64] interface {
 	GetName() string
 	Get(ctx context.Context, key string) (T, error)
@@ -37,9 +42,10 @@ type Handler struct {
 	gaugeStorage   Storager[float64]
 	counterStorage Storager[int64]
 	db             Pinger
+	hasher         Hasher
 }
 
-func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger) http.Handler {
+func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], db Pinger, hasher Hasher) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	handlers := gin.New()
 
@@ -52,6 +58,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], 
 		gaugeStorage:   gaugeStorage,
 		counterStorage: counterStorage,
 		db:             db,
+		hasher:         hasher,
 	}
 
 	h.Init(handlers)
@@ -60,7 +67,7 @@ func NewHandler(gaugeStorage Storager[float64], counterStorage Storager[int64], 
 }
 
 func (h *Handler) Init(engine *gin.Engine) {
-	api := engine.Group("", middleware.GzipDecompressor, middleware.GzipCompressor, middleware.Logger)
+	api := engine.Group("", middleware.GzipDecompressor, middleware.GzipCompressor, middleware.Logger, middleware.HashMiddleware(h.hasher))
 	{
 		api.GET("/", h.handleHTML)
 		api.GET("/ping", h.ping)
