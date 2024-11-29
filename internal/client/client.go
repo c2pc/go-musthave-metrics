@@ -15,18 +15,25 @@ import (
 )
 
 const requestTimeout = 1 * time.Second
+const hashHeader = "HashSHA256"
+
+type Hasher interface {
+	Hash([]byte) (string, error)
+}
 
 type Client struct {
 	serverAddr string
+	hasher     Hasher
 }
 
-func NewClient(serverAddr string) reporter.Updater {
+func NewClient(serverAddr string, hasher Hasher) reporter.Updater {
 	if !strings.Contains(serverAddr, "http") {
 		serverAddr = "http://" + serverAddr
 	}
 
 	return &Client{
 		serverAddr: serverAddr,
+		hasher:     hasher,
 	}
 }
 
@@ -37,25 +44,29 @@ func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) erro
 	}
 
 	// Сжимаем данные в формате gzip
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(body); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
+	buf, err := c.compress(body)
+	if err != nil {
 		return err
 	}
 
 	client := &http.Client{
 		Timeout: requestTimeout,
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/updates/", &buf)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.serverAddr+"/updates/", buf)
 	if err != nil {
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
 	request.Header.Set("Accept-Encoding", "gzip")
+
+	if c.hasher != nil {
+		hash, err := c.hash(body)
+		if err != nil {
+			return err
+		}
+		request.Header.Set(hashHeader, hash)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -68,4 +79,26 @@ func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) erro
 	}
 
 	return nil
+}
+
+func (c *Client) compress(data []byte) (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+
+	return &buf, nil
+}
+
+func (c *Client) hash(data []byte) (string, error) {
+	hash, err := c.hasher.Hash(data)
+	if err != nil {
+		return "", err
+	}
+
+	return hash, nil
 }

@@ -21,6 +21,7 @@ var (
 	fileStoragePath string
 	restore         bool
 	databaseDSN     string
+	hashKey         string
 )
 
 type envConfig struct {
@@ -29,6 +30,7 @@ type envConfig struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         string `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
+	HashKey         string `env:"KEY"`
 }
 
 type Config struct {
@@ -37,6 +39,7 @@ type Config struct {
 	FileStoragePath string
 	Restore         bool
 	DatabaseDSN     string
+	HashKey         string
 }
 
 func Parse() (*Config, error) {
@@ -45,6 +48,7 @@ func Parse() (*Config, error) {
 	flag.StringVar(&fileStoragePath, "f", "", "The path to the file storage")
 	flag.BoolVar(&restore, "r", defaultRestore, "The restore flag")
 	flag.StringVar(&databaseDSN, "d", "", "The database DSN")
+	flag.StringVar(&hashKey, "k", "", "The hash key")
 
 	cfg := &Config{}
 
@@ -115,6 +119,15 @@ func Parse() (*Config, error) {
 		cfg.DatabaseDSN = v
 	} else {
 		cfg.DatabaseDSN = databaseDSN
+	}
+
+	//Parsing Hash Key
+	if envCfg.HashKey != "" {
+		cfg.HashKey = envCfg.HashKey
+	} else if v := os.Getenv("KEY"); v != "" {
+		cfg.HashKey = v
+	} else {
+		cfg.HashKey = hashKey
 	}
 
 	return cfg, nil
