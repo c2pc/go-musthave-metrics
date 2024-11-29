@@ -84,12 +84,13 @@ func main() {
 		defer syncer.Close()
 	}
 
-	var hasher *hash.Hasher
+	var handlers http.Handler
 	if cfg.HashKey != "" {
-		hasher = hash.New(cfg.HashKey)
+		hasher := hash.New(cfg.HashKey)
+		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, hasher)
+	} else {
+		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, nil)
 	}
-
-	handlers := handler.NewHandler(gaugeStorage, counterStorage, db, hasher)
 
 	httpServer := server.NewServer(handlers, cfg.Address)
 

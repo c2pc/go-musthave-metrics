@@ -37,12 +37,13 @@ func main() {
 	counterMetric := metric.NewCounterMetric()
 	gaugeMetric := metric.NewGaugeMetric()
 
-	var hasher *hash.Hasher
+	var client reporter.Updater
 	if cfg.HashKey != "" {
-		hasher = hash.New(cfg.HashKey)
+		hasher := hash.New(cfg.HashKey)
+		client = cl.NewClient(cfg.ServerAddress, hasher)
+	} else {
+		client = cl.NewClient(cfg.ServerAddress, nil)
 	}
-
-	client := cl.NewClient(cfg.ServerAddress, hasher)
 
 	var report Reporter = reporter.New(client, reporter.Timer{
 		PollInterval:   cfg.PollInterval,
