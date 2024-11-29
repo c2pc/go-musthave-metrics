@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,68 +14,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/c2pc/go-musthave-metrics/internal/model"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/c2pc/go-musthave-metrics/internal/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
+	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
-func TestNewHandler(t *testing.T) {
-	type args struct {
-		gaugeStorage   handler.Storager[float64]
-		counterStorage handler.Storager[int64]
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr assert.ErrorAssertionFunc
-	}{
-		{
-			name: "empty storages",
-			args: args{
-				nil, nil,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "empty gauge storage",
-			args: args{
-				nil, storage.NewCounterStorage(),
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "empty counter storage",
-			args: args{
-				storage.NewGaugeStorage(), nil,
-			},
-			wantErr: assert.Error,
-		},
-		{
-			name: "success",
-			args: args{
-				storage.NewGaugeStorage(), storage.NewCounterStorage(),
-			},
-			wantErr: assert.NoError,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler.NewHandler(tt.args.gaugeStorage, tt.args.counterStorage)
-			if !tt.wantErr(t, err, fmt.Sprintf("NewHandler(%v, %v)", tt.args.gaugeStorage, tt.args.counterStorage)) {
-				return
-			}
-		})
-	}
-}
-
 func TestMetricHandler_HandleUpdate(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -124,10 +86,18 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 }
 
 func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -206,13 +176,13 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 
 				switch tt.data.Type {
 				case gaugeStorage.GetName():
-					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					value, err := gaugeStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.data.Value, value)
 					assert.NotEmpty(t, *metrics.Value)
 					assert.Equal(t, tt.data.Value, *metrics.Value)
 				case counterStorage.GetName():
-					value, err := counterStorage.Get(tt.data.ID.(string))
+					value, err := counterStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.data.Delta, value)
 					assert.NotEmpty(t, *metrics.Delta)
@@ -227,11 +197,98 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	}
 }
 
-func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	require.NoError(t, err)
+
+	var defaultDelta, defaultDelta2 int64 = 10, -6
+	var defaultValue, defaultValue2 float64 = 10, 0.5
+
+	type data struct {
+		ID    interface{} `json:"id"`
+		Type  interface{} `json:"type"`
+		Delta interface{} `json:"delta,omitempty"`
+		Value interface{} `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		data           []data
+		expectedStatus int
+	}{
+		{"Get", http.MethodGet, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"Empty body", http.MethodPost, nil, http.StatusBadRequest},
+		{"Empty type", http.MethodPost, []data{{ID: "id", Type: "", Delta: defaultDelta, Value: defaultValue}}, http.StatusBadRequest},
+		{"Empty name", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Empty name2", http.MethodPost, []data{{ID: "", Type: "counter", Delta: defaultDelta, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Empty name3", http.MethodPost, []data{{ID: "", Type: "gauge", Delta: defaultDelta2, Value: defaultValue}}, http.StatusBadRequest},
+		{"Empty value", http.MethodPost, []data{{ID: "id1", Type: "counter", Delta: nil, Value: nil}}, http.StatusBadRequest},
+		{"Empty value2", http.MethodPost, []data{{ID: "id2", Type: "gauge", Delta: nil, Value: nil}}, http.StatusBadRequest},
+
+		{"Invalid type", http.MethodPost, []data{{ID: "id3", Type: "invalid", Delta: defaultDelta2, Value: defaultValue2}}, http.StatusBadRequest},
+		{"Invalid value", http.MethodPost, []data{{ID: "id3", Type: "gauge", Value: "invalid"}}, http.StatusBadRequest},
+		{"Invalid value2", http.MethodPost, []data{{ID: "id3", Type: "counter", Delta: "invalid"}}, http.StatusBadRequest},
+
+		{"Success Gauge", http.MethodPost, []data{{ID: "id2", Type: "gauge", Value: defaultValue2}}, http.StatusOK},
+		{"Success Counter", http.MethodPost, []data{{ID: "id3", Type: "counter", Delta: defaultDelta2}}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.data != nil {
+				out, err := json.Marshal(tt.data)
+				if err != nil {
+					log.Fatal(err)
+				}
+				body = bytes.NewReader(out)
+			}
+
+			request := httptest.NewRequest(tt.method, "/updates/", body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+			result.Body.Close()
+		})
+	}
+}
+
+func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -267,15 +324,15 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 
 			if tt.compress {
 				zb := gzip.NewWriter(buf)
-				defer zb.Close() // Закрываем gzip.Writer в конце функции
+				defer zb.Close()
 
 				_, err = zb.Write(out)
 				require.NoError(t, err)
 
-				err = zb.Close() // Обязательно закрываем после записи
+				err = zb.Close()
 				require.NoError(t, err)
 			} else {
-				buf.Write(out) // Если не сжимаем, просто добавляем данные
+				buf.Write(out)
 			}
 
 			request := httptest.NewRequest(http.MethodPost, "/update/", buf)
@@ -314,7 +371,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 				assert.Equal(t, data.ID, metrics.ID)
 				assert.Equal(t, data.Type, metrics.Type)
 
-				value, err := gaugeStorage.Get(data.ID)
+				value, err := gaugeStorage.Get(context.Background(), data.ID)
 				require.NoError(t, err)
 				assert.Equal(t, data.Value, value)
 				assert.NotEmpty(t, *metrics.Value)
@@ -327,10 +384,18 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValue(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -373,13 +438,13 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 					value, err := strconv.ParseFloat(tt.expectedBody, 64)
 					require.NoError(t, err)
 
-					err = gaugeStorage.Set(split[3], value)
+					err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: split[3], Value: value})
 					require.NoError(t, err)
 				} else if split[2] == "counter" {
 					value, err := strconv.ParseInt(tt.expectedBody, 10, 64)
 					require.NoError(t, err)
 
-					err = counterStorage.Set(split[3], value)
+					err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: split[3], Value: value})
 					require.NoError(t, err)
 				}
 			}
@@ -428,10 +493,18 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValueJSON(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	var defaultDelta int64 = -6
@@ -481,10 +554,10 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.expectedBody != nil {
 				if tt.data.Type == "gauge" {
-					err = gaugeStorage.Set(tt.data.ID.(string), tt.expectedBody.Value.(float64))
+					err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: tt.data.ID.(string), Value: tt.expectedBody.Value.(float64)})
 					require.NoError(t, err)
 				} else if tt.data.Type == "counter" {
-					err = counterStorage.Set(tt.data.ID.(string), tt.expectedBody.Delta.(int64))
+					err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: tt.data.ID.(string), Value: tt.expectedBody.Delta.(int64)})
 					require.NoError(t, err)
 				}
 			}
@@ -520,13 +593,13 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 
 				switch tt.data.Type {
 				case gaugeStorage.GetName():
-					value, err := gaugeStorage.Get(tt.data.ID.(string))
+					value, err := gaugeStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectedBody.Value, value)
 					assert.NotEmpty(t, *metrics.Value)
 					assert.Equal(t, tt.expectedBody.Value, *metrics.Value)
 				case counterStorage.GetName():
-					value, err := counterStorage.Get(tt.data.ID.(string))
+					value, err := counterStorage.Get(context.Background(), tt.data.ID.(string))
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectedBody.Delta, value)
 					assert.NotEmpty(t, *metrics.Delta)
@@ -544,10 +617,18 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 }
 
 func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -574,7 +655,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 
 			buf := new(bytes.Buffer)
 
-			err = gaugeStorage.Set(data.ID, tt.value)
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: data.ID, Value: tt.value})
 			require.NoError(t, err)
 
 			out, err := json.Marshal(data)
@@ -582,15 +663,15 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 
 			if tt.compress {
 				zb := gzip.NewWriter(buf)
-				defer zb.Close() // Закрываем gzip.Writer в конце функции
+				defer zb.Close()
 
 				_, err = zb.Write(out)
 				require.NoError(t, err)
 
-				err = zb.Close() // Обязательно закрываем после записи
+				err = zb.Close()
 				require.NoError(t, err)
 			} else {
-				buf.Write(out) // Если не сжимаем, просто добавляем данные
+				buf.Write(out)
 			}
 
 			request := httptest.NewRequest(http.MethodPost, "/value/", buf)
@@ -629,7 +710,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 				assert.Equal(t, data.ID, metrics.ID)
 				assert.Equal(t, data.Type, metrics.Type)
 
-				value, err := gaugeStorage.Get(data.ID)
+				value, err := gaugeStorage.Get(context.Background(), data.ID)
 				require.NoError(t, err)
 				assert.Equal(t, tt.value, value)
 				assert.NotEmpty(t, *metrics.Value)
@@ -641,10 +722,18 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	}
 }
 func TestMetricHandler_HandleAll(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -678,13 +767,13 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 						value, err := strconv.ParseFloat(split[2], 64)
 						require.NoError(t, err)
 
-						err = gaugeStorage.Set(split[1], value)
+						err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: split[1], Value: value})
 						require.NoError(t, err)
 					} else if split[2] == "counter" {
 						value, err := strconv.ParseInt(split[2], 10, 64)
 						require.NoError(t, err)
 
-						err = counterStorage.Set(split[1], value)
+						err = counterStorage.Set(context.Background(), storage.Value[int64]{Key: split[1], Value: value})
 						require.NoError(t, err)
 					}
 				}
@@ -710,10 +799,18 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 }
 
 func TestMetricHandler_HandleAll_Compress(t *testing.T) {
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
 
-	handler2, err := handler.NewHandler(gaugeStorage, counterStorage)
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -727,7 +824,7 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err = gaugeStorage.Set("id", 10)
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: "id", Value: 10})
 			require.NoError(t, err)
 
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -751,6 +848,66 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
+func TestMetricHandler_Ping(t *testing.T) {
+	m, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	db := database.DB{DB: m}
+
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, &db)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		method         string
+		mockgen        func()
+		expectedStatus int
+	}{
+		{"Post", http.MethodPost, nil, http.StatusNotFound},
+		{"Put", http.MethodPut, nil, http.StatusNotFound},
+		{"Patch", http.MethodPatch, nil, http.StatusNotFound},
+		{"Delete", http.MethodDelete, nil, http.StatusNotFound},
+		{"Connect", http.MethodConnect, nil, http.StatusNotFound},
+		{"Options", http.MethodOptions, nil, http.StatusNotFound},
+		{"Trace", http.MethodTrace, nil, http.StatusNotFound},
+		{"Head", http.MethodHead, nil, http.StatusNotFound},
+
+		{"No Ping", http.MethodGet, func() {
+			mock.ExpectPing().WillReturnError(fmt.Errorf("ping error"))
+		}, http.StatusInternalServerError},
+
+		{"Success", http.MethodGet, func() {
+			mock.ExpectPing().WillReturnError(nil)
+		}, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.mockgen != nil {
+				tt.mockgen()
+			}
+			request := httptest.NewRequest(tt.method, "/ping", nil)
+
+			w := httptest.NewRecorder()
+
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
 
 			require.NoError(t, result.Body.Close())
 		})

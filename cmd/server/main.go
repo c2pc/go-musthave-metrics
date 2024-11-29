@@ -5,12 +5,15 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/c2pc/go-musthave-metrics/cmd/server/config"
+	config "github.com/c2pc/go-musthave-metrics/internal/config/server"
+	"github.com/c2pc/go-musthave-metrics/internal/database"
+	"github.com/c2pc/go-musthave-metrics/internal/database/migrate"
 	"github.com/c2pc/go-musthave-metrics/internal/handler"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/server"
@@ -34,27 +37,53 @@ func main() {
 	cfg, err := config.Parse()
 	if err != nil {
 		logger.Log.Fatal("failed to parse config", logger.Error(err))
-		return
 	}
 
-	gaugeStorage := storage.NewGaugeStorage()
-	counterStorage := storage.NewCounterStorage()
+	var db *database.DB
+	var memoryType storage.Type
+	if cfg.DatabaseDSN == "" {
+		memoryType = storage.TypeMemory
+	} else {
+		memoryType = storage.TypeDB
+		db, err = database.New(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Fatal("failed to connect to database", logger.Error(err))
+		}
+		defer db.Close()
 
-	syncer, err := sync.Start(ctx, sync.Config{
-		StoreInterval:   cfg.StoreInterval,
-		FileStoragePath: cfg.FileStoragePath,
-		Restore:         cfg.Restore,
-	}, gaugeStorage, counterStorage)
+		purl, err := url.Parse(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Fatal("failed to parse database URL", logger.Error(err))
+		}
+
+		err = migrate.Migrate(db.DB, purl.Path)
+		if err != nil {
+			logger.Log.Fatal("failed to migrate database", logger.Error(err))
+		}
+	}
+
+	gaugeStorage, err := storage.NewGaugeStorage(memoryType, db)
 	if err != nil {
-		logger.Log.Fatal("failed to start syncer", logger.Error(err))
-		return
+		logger.Log.Fatal("failed to initialize gaugeStorage", logger.Error(err))
 	}
-	defer syncer.Close()
-
-	handlers, err := handler.NewHandler(gaugeStorage, counterStorage)
+	counterStorage, err := storage.NewCounterStorage(memoryType, db)
 	if err != nil {
-		logger.Log.Fatal("failed to init handlers", logger.Error(err))
+		logger.Log.Fatal("failed to initialize counterStorage", logger.Error(err))
 	}
+
+	if cfg.FileStoragePath != "" && cfg.DatabaseDSN == "" {
+		syncer, err := sync.Start(ctx, sync.Config{
+			StoreInterval:   cfg.StoreInterval,
+			FileStoragePath: cfg.FileStoragePath,
+			Restore:         cfg.Restore,
+		}, gaugeStorage, counterStorage)
+		if err != nil {
+			logger.Log.Fatal("failed to start syncer", logger.Error(err))
+		}
+		defer syncer.Close()
+	}
+
+	handlers := handler.NewHandler(gaugeStorage, counterStorage, db)
 
 	httpServer := server.NewServer(handlers, cfg.Address)
 

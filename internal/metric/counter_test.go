@@ -45,12 +45,12 @@ func TestCounterMetric_PollStats(t *testing.T) {
 			counterMetric.PollStats()
 			stats := counterMetric.GetStats()
 			if len(stats) != len(tt.want) {
-				t.Errorf("PollStats() = %v, want %v", stats, tt.want)
+				t.Errorf("got %v, want %v", stats, tt.want)
 			}
 
 			eq := reflect.DeepEqual(tt.want, stats)
 			if !eq {
-				t.Errorf("PollStats() = %v, want %v", stats, tt.want)
+				t.Errorf("got %v, want %v", stats, tt.want)
 			}
 		})
 	}
@@ -99,12 +99,12 @@ func TestCounterMetric_GetStats(t *testing.T) {
 
 			stats := counterMetric.GetStats()
 			if len(stats) != len(tt.want) {
-				t.Errorf("PollStats() = %v, want %v", stats, tt.want)
+				t.Errorf("got %v, want %v", stats, tt.want)
 			}
 
 			eq := reflect.DeepEqual(tt.want, stats)
 			if !eq {
-				t.Errorf("PollStats() = %v, want %v", stats, tt.want)
+				t.Errorf("got %v, want %v", stats, tt.want)
 			}
 		})
 	}

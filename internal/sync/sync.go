@@ -10,7 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/c2pc/go-musthave-metrics/internal/retry"
+	"github.com/c2pc/go-musthave-metrics/internal/storage"
 )
 
 const (
@@ -19,9 +23,9 @@ const (
 
 type Storager interface {
 	GetName() string
-	GetString(key string) (string, error)
-	GetAllString() (map[string]string, error)
-	SetString(key string, value string) error
+	GetString(ctx context.Context, key string) (string, error)
+	GetAllString(ctx context.Context) (map[string]string, error)
+	SetString(ctx context.Context, values ...storage.Valuer[string]) error
 }
 
 type Sync struct {
@@ -60,7 +64,7 @@ func Start(ctx context.Context, cfg Config, storages ...Storager) (io.Closer, er
 	}
 
 	if cfg.Restore {
-		if err := s.restore(); err != nil {
+		if err := s.restore(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -85,7 +89,7 @@ func (s *Sync) listen(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := s.saveDataToFile()
+			err := s.saveDataToFile(ctx)
 			if err != nil {
 				log.Printf("failed to save data to file: %v", err)
 			}
@@ -93,7 +97,7 @@ func (s *Sync) listen(ctx context.Context, interval time.Duration) {
 	}
 }
 
-func (s *Sync) restore() error {
+func (s *Sync) restore(ctx context.Context) error {
 	if s.file == nil {
 		return errors.New("file not open")
 	}
@@ -123,7 +127,7 @@ func (s *Sync) restore() error {
 		return err
 	}
 
-	err = s.writeDataToStorage(dataList...)
+	err = s.writeDataToStorage(ctx, dataList...)
 	if err != nil {
 		return err
 	}
@@ -131,8 +135,8 @@ func (s *Sync) restore() error {
 	return nil
 }
 
-func (s *Sync) saveDataToFile() error {
-	data, err := s.readDataFromStorage()
+func (s *Sync) saveDataToFile(ctx context.Context) error {
+	data, err := s.readDataFromStorage(ctx)
 	if err != nil {
 		return err
 	}
@@ -169,10 +173,10 @@ func (s *Sync) dataToLine(data column) string {
 	return fmt.Sprintf("%s%s%s%s%s", data.name, separator, data.key, separator, data.value)
 }
 
-func (s *Sync) readDataFromStorage() ([]column, error) {
+func (s *Sync) readDataFromStorage(ctx context.Context) ([]column, error) {
 	var dataList []column
 	for _, storager := range s.storages {
-		data, err := storager.GetAllString()
+		data, err := storager.GetAllString(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -183,12 +187,23 @@ func (s *Sync) readDataFromStorage() ([]column, error) {
 	return dataList, nil
 }
 
-func (s *Sync) writeDataToStorage(data ...column) error {
+func (s *Sync) writeDataToStorage(ctx context.Context, data ...column) error {
+	columns := map[string][]storage.Valuer[string]{}
+
 	for _, d := range data {
 		if _, ok := s.storages[d.name]; !ok {
 			return fmt.Errorf("storage %s not found", d.name)
 		}
-		err := s.storages[d.name].SetString(d.key, d.value)
+
+		if _, ok := columns[d.name]; !ok {
+			columns[d.name] = []storage.Valuer[string]{}
+		}
+
+		columns[d.name] = append(columns[d.name], storage.Value[string]{Key: d.key, Value: d.value})
+	}
+
+	for key, value := range columns {
+		err := s.storages[key].SetString(ctx, value...)
 		if err != nil {
 			return err
 		}
@@ -204,13 +219,32 @@ func (s *Sync) openFile(filePath string) error {
 		return err
 	}
 
-	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	var file *os.File
+	err := retry.Retry(
+		func() error {
+			var err error
+			file, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func(err error) bool {
+			var pathError *os.PathError
+			if errors.As(err, &pathError) {
+				if errors.Is(pathError.Err, syscall.EACCES) {
+					return true
+				}
+			}
+			return false
+		},
+		[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+	)
 	if err != nil {
 		return err
 	}
 
 	s.file = file
-
 	return nil
 }
 

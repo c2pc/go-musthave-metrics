@@ -1,4 +1,4 @@
-package config
+package agent
 
 import (
 	"flag"
@@ -15,9 +15,9 @@ const (
 )
 
 var (
-	serverAddress  = flag.String("a", defaultServerAddress, "The Address of the server")
-	pollInterval   = flag.Int("p", defaultPollInterval, "The interval between polls in seconds")
-	reportInterval = flag.Int("r", defaultReportInterval, "The interval between reports in seconds")
+	serverAddress  string
+	pollInterval   int
+	reportInterval int
 )
 
 type envConfig struct {
@@ -33,6 +33,10 @@ type Config struct {
 }
 
 func Parse() (*Config, error) {
+	flag.StringVar(&serverAddress, "a", defaultServerAddress, "The Address of the server")
+	flag.IntVar(&pollInterval, "p", defaultPollInterval, "The interval between polls in seconds")
+	flag.IntVar(&reportInterval, "r", defaultReportInterval, "The interval between reports in seconds")
+
 	cfg := Config{}
 
 	flag.Parse()
@@ -51,19 +55,19 @@ func Parse() (*Config, error) {
 	} else if address := os.Getenv("ADDRESS"); address != "" {
 		cfg.ServerAddress = address
 	} else {
-		cfg.ServerAddress = *serverAddress
+		cfg.ServerAddress = serverAddress
 	}
 
 	if envCfg.PollInterval != 0 {
 		cfg.PollInterval = envCfg.PollInterval
 	} else {
-		cfg.PollInterval = *pollInterval
+		cfg.PollInterval = pollInterval
 	}
 
 	if envCfg.ReportInterval != 0 {
 		cfg.ReportInterval = envCfg.ReportInterval
 	} else {
-		cfg.ReportInterval = *reportInterval
+		cfg.ReportInterval = reportInterval
 	}
 
 	return &cfg, nil

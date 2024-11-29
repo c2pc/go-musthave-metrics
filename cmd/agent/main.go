@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/c2pc/go-musthave-metrics/cmd/agent/config"
 	cl "github.com/c2pc/go-musthave-metrics/internal/client"
+	config "github.com/c2pc/go-musthave-metrics/internal/config/agent"
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
@@ -31,7 +31,6 @@ func main() {
 	cfg, err := config.Parse()
 	if err != nil {
 		logger.Log.Fatal("failed to parse config", logger.Error(err))
-		return
 	}
 
 	counterMetric := metric.NewCounterMetric()
