@@ -62,11 +62,8 @@ func (r *Reporter) Run(ctx context.Context) {
 	go r.poll(ctx)
 	go r.report(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		}
+	for range ctx.Done() {
+		return
 	}
 }
 
