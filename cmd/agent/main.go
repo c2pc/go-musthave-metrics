@@ -48,7 +48,7 @@ func main() {
 	var report Reporter = reporter.New(client, reporter.Timer{
 		PollInterval:   cfg.PollInterval,
 		ReportInterval: cfg.ReportInterval,
-	}, counterMetric, gaugeMetric)
+	}, counterMetric, gaugeMetric, cfg.RateLimit)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

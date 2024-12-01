@@ -169,7 +169,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 				res, err := io.ReadAll(result.Body)
 				require.NoError(t, err)
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -366,7 +366,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -470,7 +470,7 @@ func TestMetricHandler_HandleUpdateJSON_Hash(t *testing.T) {
 					require.True(t, ok)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(body, &metrics)
 				require.NoError(t, err)
 
@@ -690,7 +690,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 				res, err := io.ReadAll(result.Body)
 				require.NoError(t, err)
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -809,7 +809,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -913,7 +913,7 @@ func TestMetricHandler_HandleValueJSON_Hash(t *testing.T) {
 					require.True(t, ok)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(body, &metrics)
 				require.NoError(t, err)
 

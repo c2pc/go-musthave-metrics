@@ -3,6 +3,7 @@ package reporter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 type Updater interface {
-	UpdateMetric(ctx context.Context, metrics []model.Metrics) error
+	UpdateMetric(ctx context.Context, metrics ...model.Metric) error
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -32,28 +33,63 @@ type Reporter struct {
 	gaugeMetric   MetricReader[float64]
 	client        Updater
 	timer         Timer
+	rateLimit     int
+	jobs          chan []model.Metric
+	results       chan error
 }
 
-func New(client Updater, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64]) *Reporter {
+func New(client Updater, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64], rateLimit int) *Reporter {
+	if rateLimit <= 0 {
+		rateLimit = 1
+	}
+
 	return &Reporter{
 		counterMetric: counterMetric,
 		gaugeMetric:   gaugeMetric,
 		client:        client,
 		timer:         timer,
+		rateLimit:     rateLimit,
+		jobs:          make(chan []model.Metric),
+		results:       make(chan error),
 	}
 }
 
 func (r *Reporter) Run(ctx context.Context) {
+	for i := 1; i <= r.rateLimit; i++ {
+		go r.worker(ctx, i, r.jobs, r.results)
+	}
+
+	go r.poll(ctx)
+	go r.report(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (r *Reporter) poll(ctx context.Context) {
 	pollTicker := time.NewTicker(time.Duration(r.timer.PollInterval) * time.Second)
 	defer pollTicker.Stop()
-
-	reportTicker := time.NewTicker(time.Duration(r.timer.ReportInterval) * time.Second)
-	defer reportTicker.Stop()
 
 	for {
 		select {
 		case <-pollTicker.C:
 			r.pollMetrics()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (r *Reporter) report(ctx context.Context) {
+	reportTicker := time.NewTicker(time.Duration(r.timer.ReportInterval) * time.Second)
+	defer reportTicker.Stop()
+
+	for {
+		select {
 		case <-reportTicker.C:
 			r.reportMetrics(ctx)
 		case <-ctx.Done():
@@ -84,60 +120,52 @@ func (r *Reporter) pollMetrics() {
 
 func (r *Reporter) reportMetrics(ctx context.Context) {
 	logger.Log.Info("Starting reporting metrics...")
-	waitGroup := sync.WaitGroup{}
 
-	var counters []model.Metrics
-	for key, value := range r.counterMetric.GetStats() {
-		counters = append(counters, model.Metrics{
-			ID:    key,
-			Type:  r.counterMetric.GetName(),
-			Delta: &value,
-		})
-
-	}
-
-	var gauges []model.Metrics
+	var metrics []model.Metric
 	for key, value := range r.gaugeMetric.GetStats() {
-		gauges = append(gauges, model.Metrics{
+		metrics = append(metrics, model.Metric{
 			ID:    key,
 			Type:  r.gaugeMetric.GetName(),
 			Value: &value,
 		})
 	}
 
-	if len(counters) > 0 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			err := r.updateMetrics(ctx, counters)
-			if err != nil {
-				logger.Log.Info("Error updating counters metric", logger.Error(err))
-				return
-			}
-		}()
+	for key, value := range r.counterMetric.GetStats() {
+		metrics = append(metrics, model.Metric{
+			ID:    key,
+			Type:  r.counterMetric.GetName(),
+			Delta: &value,
+		})
 	}
 
-	if len(gauges) > 0 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			err := r.updateMetrics(ctx, gauges)
-			if err != nil {
-				logger.Log.Info("Error updating gauge metric", logger.Error(err))
-				return
-			}
-		}()
+	if len(metrics) > 0 {
+		r.jobs <- metrics
+		err := <-r.results
+		if err != nil {
+			logger.Log.Info(err.Error())
+		}
 	}
-
-	waitGroup.Wait()
 
 	logger.Log.Info("Finish reporting metrics...")
 }
 
-func (r *Reporter) updateMetrics(ctx context.Context, metrics []model.Metrics) error {
+func (r *Reporter) worker(ctx context.Context, id int, jobs <-chan []model.Metric, results chan<- error) {
+	for {
+		select {
+		case job := <-jobs:
+			logger.Log.Info(fmt.Sprintf("The worker %d started the task", id), logger.Field{Key: "Metrics", Value: job})
+			results <- r.updateMetrics(ctx, job...)
+			logger.Log.Info(fmt.Sprintf("The worker %d ended the task", id), logger.Field{Key: "Metrics", Value: job})
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (r *Reporter) updateMetrics(ctx context.Context, metrics ...model.Metric) error {
 	return retry.Retry(
 		func() error {
-			return r.client.UpdateMetric(ctx, metrics)
+			return r.client.UpdateMetric(ctx, metrics...)
 		},
 		func(err error) bool {
 			var netErr net.Error

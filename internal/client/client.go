@@ -15,7 +15,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
 )
 
-const requestTimeout = 1 * time.Second
+const requestTimeout = 2 * time.Second
 
 type Hasher interface {
 	Hash([]byte) (string, error)
@@ -37,7 +37,11 @@ func NewClient(serverAddr string, hasher Hasher) reporter.Updater {
 	}
 }
 
-func (c *Client) UpdateMetric(ctx context.Context, metrics []model.Metrics) error {
+func (c *Client) UpdateMetric(ctx context.Context, metrics ...model.Metric) error {
+	return c.update(ctx, metrics...)
+}
+
+func (c *Client) update(ctx context.Context, metrics ...model.Metric) error {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return err

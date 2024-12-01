@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/c2pc/go-musthave-metrics/internal/retry"
@@ -134,7 +135,7 @@ func (h *Handler) handleUpdate(c *gin.Context) {
 func (h *Handler) handleUpdateJSON(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	var metric model.Metrics
+	var metric model.Metric
 	message, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
@@ -158,7 +159,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 		return
 	}
 
-	var metricRequest *model.Metrics
+	var metricRequest *model.Metric
 
 	switch metric.Type {
 	case h.gaugeStorage.GetName():
@@ -191,7 +192,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		metricRequest = &model.Metrics{
+		metricRequest = &model.Metric{
 			Type:  h.gaugeStorage.GetName(),
 			ID:    metric.ID,
 			Value: &newValue,
@@ -227,7 +228,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 			return
 		}
 
-		metricRequest = &model.Metrics{
+		metricRequest = &model.Metric{
 			Type:  h.counterStorage.GetName(),
 			ID:    metric.ID,
 			Delta: &newValue,
@@ -244,7 +245,7 @@ func (h *Handler) handleUpdateJSON(c *gin.Context) {
 func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	var metrics []model.Metrics
+	var metrics []model.Metric
 	message, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
@@ -289,35 +290,51 @@ func (h *Handler) handleUpdatesJSON(c *gin.Context) {
 		}
 	}
 
-	if len(gauges) > 0 {
-		if err := retry.Retry(
-			func() error {
-				return h.gaugeStorage.Set(ctx, gauges...)
-			},
-			func(err error) bool {
-				return errors.Is(err, driver.ErrBadConn)
-			},
-			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
-			return
-		}
+	var wg sync.WaitGroup
+	var superErr error
 
+	if len(gauges) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err = retry.Retry(
+				func() error {
+					return h.gaugeStorage.Set(ctx, gauges...)
+				},
+				func(err error) bool {
+					return errors.Is(err, driver.ErrBadConn)
+				},
+				[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+			); err != nil {
+				superErr = err
+			}
+		}()
 	}
 
 	if len(counters) > 0 {
-		if err := retry.Retry(
-			func() error {
-				return h.counterStorage.Set(ctx, counters...)
-			},
-			func(err error) bool {
-				return errors.Is(err, driver.ErrBadConn)
-			},
-			[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
-			return
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err = retry.Retry(
+				func() error {
+					return h.counterStorage.Set(ctx, counters...)
+				},
+				func(err error) bool {
+					return errors.Is(err, driver.ErrBadConn)
+				},
+				[]time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second},
+			); err != nil {
+				superErr = err
+
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if superErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set metric value"})
+		return
 	}
 
 	c.Status(http.StatusOK)
@@ -395,7 +412,7 @@ func (h *Handler) handleValue(c *gin.Context) {
 func (h *Handler) handleValueJSON(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	var metric model.Metrics
+	var metric model.Metric
 	message, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
