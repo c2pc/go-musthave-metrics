@@ -4,16 +4,20 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 )
 
 type Hasher struct {
 	key string
 }
 
-func New(key string) *Hasher {
+func New(key string) (*Hasher, error) {
+	if len(key) == 0 {
+		return nil, errors.New("key is empty")
+	}
 	return &Hasher{
 		key: key,
-	}
+	}, nil
 }
 
 func (h *Hasher) Check(data []byte, acceptedHash []byte) (bool, error) {

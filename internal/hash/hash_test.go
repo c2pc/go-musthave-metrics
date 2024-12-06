@@ -2,12 +2,15 @@ package hash
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestHash(t *testing.T) {
 	key := "my_secret_key"
 	data := []byte("my_data")
-	hasher := New(key)
+	hasher, err := New(key)
+	require.NoError(t, err)
 
 	expectedHashHex := "cac1b4db68fec5ca9b45231ce0723aafb8e16112b16ced7691e327d5f6d8433c"
 
@@ -24,7 +27,8 @@ func TestHash(t *testing.T) {
 func TestCheck(t *testing.T) {
 	key := "my_secret_key"
 	data := []byte("my_data")
-	hasher := New(key)
+	hasher, err := New(key)
+	require.NoError(t, err)
 
 	hash, err := hasher.Hash(data)
 	if err != nil {

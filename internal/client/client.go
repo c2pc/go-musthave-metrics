@@ -38,6 +38,10 @@ func NewClient(serverAddr string, hasher Hasher) reporter.Updater {
 }
 
 func (c *Client) UpdateMetric(ctx context.Context, metrics ...model.Metric) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
 	return c.update(ctx, metrics...)
 }
 

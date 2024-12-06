@@ -11,13 +11,13 @@ const (
 )
 
 type CounterMetric struct {
-	mu    *sync.RWMutex
+	mu    sync.RWMutex
 	stats map[string]int64
 }
 
 func NewCounterMetric() reporter.MetricReader[int64] {
 	return &CounterMetric{
-		mu:    &sync.RWMutex{},
+		mu:    sync.RWMutex{},
 		stats: make(map[string]int64),
 	}
 }

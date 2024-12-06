@@ -391,7 +391,8 @@ func TestMetricHandler_HandleUpdateJSON_Hash(t *testing.T) {
 	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
 
-	hasher := hash.New("key")
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
 
 	m, _, err := sqlmock.New()
 	if err != nil {
@@ -840,7 +841,8 @@ func TestMetricHandler_HandleValueJSON_Hash(t *testing.T) {
 	}
 	defer m.Close()
 
-	hasher := hash.New("key")
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
 
 	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, hasher)
 	require.NoError(t, err)
@@ -1077,7 +1079,8 @@ func TestMetricHandler_HandleAll_Hash(t *testing.T) {
 	}
 	defer m.Close()
 
-	hasher := hash.New("key")
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
 
 	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, hasher)
 	require.NoError(t, err)

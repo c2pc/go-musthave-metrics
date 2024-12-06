@@ -13,6 +13,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
+	"github.com/c2pc/go-musthave-metrics/internal/worker"
 )
 
 type Reporter interface {
@@ -20,6 +21,9 @@ type Reporter interface {
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	err := logger.Initialize("info")
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v\n", err)
@@ -39,19 +43,23 @@ func main() {
 
 	var client reporter.Updater
 	if cfg.HashKey != "" {
-		hasher := hash.New(cfg.HashKey)
+		hasher, err := hash.New(cfg.HashKey)
+		if err != nil {
+			logger.Log.Error("failed to initialize hasher", logger.Error(err))
+			return
+		}
 		client = cl.NewClient(cfg.ServerAddress, hasher)
 	} else {
 		client = cl.NewClient(cfg.ServerAddress, nil)
 	}
 
-	var report Reporter = reporter.New(client, reporter.Timer{
+	workerPool := worker.NewWorker(ctx, cfg.RateLimit)
+	defer workerPool.ShutDown()
+
+	var report Reporter = reporter.New(client, workerPool, reporter.Timer{
 		PollInterval:   cfg.PollInterval,
 		ReportInterval: cfg.ReportInterval,
-	}, counterMetric, gaugeMetric, cfg.RateLimit)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	}, counterMetric, gaugeMetric)
 
 	go report.Run(ctx)
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
 
@@ -50,13 +51,13 @@ const (
 )
 
 type GaugeMetric struct {
-	mu    *sync.RWMutex
+	mu    sync.RWMutex
 	stats map[string]float64
 }
 
 func NewGaugeMetric() reporter.MetricReader[float64] {
 	return &GaugeMetric{
-		mu:    &sync.RWMutex{},
+		mu:    sync.RWMutex{},
 		stats: make(map[string]float64),
 	}
 }
@@ -82,6 +83,8 @@ func (m *GaugeMetric) PollStats() {
 		defer wg.Done()
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
+
+		logger.Log.Info("Read Mem Stats", logger.Field{Key: "Stats", Value: memStats})
 
 		m.stats[GaugeAllocKey] = float64(memStats.Alloc)
 		m.stats[GaugeBuckHashSysKey] = float64(memStats.BuckHashSys)
@@ -120,10 +123,14 @@ func (m *GaugeMetric) PollStats() {
 			return
 		}
 
+		logger.Log.Info("Read CPU Stats", logger.Field{Key: "Stats", Value: cpustat})
+
 		virtualMemory, err := mem.VirtualMemory()
 		if err != nil {
 			return
 		}
+
+		logger.Log.Info("Read Virtual Memory Stats", logger.Field{Key: "Stats", Value: cpustat})
 
 		m.stats[TotalMemory] = float64(virtualMemory.Total)
 		m.stats[FreeMemory] = float64(virtualMemory.Free)

@@ -3,7 +3,6 @@ package reporter
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -11,10 +10,16 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/retry"
+	"github.com/c2pc/go-musthave-metrics/internal/worker"
 )
 
 type Updater interface {
 	UpdateMetric(ctx context.Context, metrics ...model.Metric) error
+}
+
+type Worker interface {
+	TaskRun(task worker.Task)
+	TaskResult() <-chan error
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -33,38 +38,24 @@ type Reporter struct {
 	gaugeMetric   MetricReader[float64]
 	client        Updater
 	timer         Timer
-	rateLimit     int
-	jobs          chan []model.Metric
-	results       chan error
+	worker        Worker
 }
 
-func New(client Updater, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64], rateLimit int) *Reporter {
-	if rateLimit <= 0 {
-		rateLimit = 1
-	}
-
+func New(client Updater, workerPool Worker, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64]) *Reporter {
 	return &Reporter{
 		counterMetric: counterMetric,
 		gaugeMetric:   gaugeMetric,
 		client:        client,
 		timer:         timer,
-		rateLimit:     rateLimit,
-		jobs:          make(chan []model.Metric),
-		results:       make(chan error),
+		worker:        workerPool,
 	}
 }
 
 func (r *Reporter) Run(ctx context.Context) {
-	for i := 1; i <= r.rateLimit; i++ {
-		go r.worker(ctx, i, r.jobs, r.results)
-	}
-
 	go r.poll(ctx)
 	go r.report(ctx)
 
-	for range ctx.Done() {
-		return
-	}
+	<-ctx.Done()
 }
 
 func (r *Reporter) poll(ctx context.Context) {
@@ -136,27 +127,16 @@ func (r *Reporter) reportMetrics(ctx context.Context) {
 	}
 
 	if len(metrics) > 0 {
-		r.jobs <- metrics
-		err := <-r.results
+		r.worker.TaskRun(func() error {
+			return r.client.UpdateMetric(ctx, metrics...)
+		})
+		err := <-r.worker.TaskResult()
 		if err != nil {
 			logger.Log.Info(err.Error())
 		}
 	}
 
 	logger.Log.Info("Finish reporting metrics...")
-}
-
-func (r *Reporter) worker(ctx context.Context, id int, jobs <-chan []model.Metric, results chan<- error) {
-	for {
-		select {
-		case job := <-jobs:
-			logger.Log.Info(fmt.Sprintf("The worker %d started the task", id), logger.Field{Key: "Metrics", Value: job})
-			results <- r.updateMetrics(ctx, job...)
-			logger.Log.Info(fmt.Sprintf("The worker %d ended the task", id), logger.Field{Key: "Metrics", Value: job})
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 func (r *Reporter) updateMetrics(ctx context.Context, metrics ...model.Metric) error {

@@ -86,7 +86,11 @@ func main() {
 
 	var handlers http.Handler
 	if cfg.HashKey != "" {
-		hasher := hash.New(cfg.HashKey)
+		hasher, err := hash.New(cfg.HashKey)
+		if err != nil {
+			logger.Log.Error("failed to initialize hasher", logger.Error(err))
+			return
+		}
 		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, hasher)
 	} else {
 		handlers = handler.NewHandler(gaugeStorage, counterStorage, db, nil)
