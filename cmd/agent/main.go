@@ -13,7 +13,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/metric"
 	"github.com/c2pc/go-musthave-metrics/internal/reporter"
-	"github.com/c2pc/go-musthave-metrics/internal/worker_pool"
+	"github.com/c2pc/go-musthave-metrics/internal/workerpool"
 )
 
 type Reporter interface {
@@ -53,7 +53,7 @@ func main() {
 		client = cl.NewClient(cfg.ServerAddress, nil)
 	}
 
-	workerPool := worker_pool.New(ctx, cfg.RateLimit)
+	workerPool := workerpool.New(ctx, cfg.RateLimit)
 	defer workerPool.ShutDown()
 
 	var report Reporter = reporter.New(client, workerPool, reporter.Timer{
