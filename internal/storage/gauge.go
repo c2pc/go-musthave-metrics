@@ -23,7 +23,6 @@ func NewGaugeStorage(storageType Type, db Driver) (*GaugeStorage, error) {
 		storageType: storageType,
 		storage:     make(map[string]float64),
 		db:          db,
-		mu:          sync.RWMutex{},
 	}, nil
 }
 

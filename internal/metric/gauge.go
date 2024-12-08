@@ -57,7 +57,6 @@ type GaugeMetric struct {
 
 func NewGaugeMetric() reporter.MetricReader[float64] {
 	return &GaugeMetric{
-		mu:    sync.RWMutex{},
 		stats: make(map[string]float64),
 	}
 }

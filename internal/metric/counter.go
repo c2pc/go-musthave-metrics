@@ -17,7 +17,6 @@ type CounterMetric struct {
 
 func NewCounterMetric() reporter.MetricReader[int64] {
 	return &CounterMetric{
-		mu:    sync.RWMutex{},
 		stats: make(map[string]int64),
 	}
 }
