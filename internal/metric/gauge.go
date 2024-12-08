@@ -120,6 +120,7 @@ func (m *GaugeMetric) PollStats() {
 		defer wg.Done()
 		cpustat, err := cpu.Percent(0, false)
 		if err != nil {
+			logger.Log.Info("Error to read CPU Stats", logger.Error(err))
 			return
 		}
 
@@ -127,6 +128,7 @@ func (m *GaugeMetric) PollStats() {
 
 		virtualMemory, err := mem.VirtualMemory()
 		if err != nil {
+			logger.Log.Info("Error to read Virtual Memory Stats", logger.Error(err))
 			return
 		}
 
