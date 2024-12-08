@@ -24,7 +24,6 @@ func NewCounterStorage(storageType Type, db Driver) (*CounterStorage, error) {
 		storageType: storageType,
 		storage:     make(map[string]int64),
 		db:          db,
-		mu:          sync.RWMutex{},
 	}, nil
 }
 

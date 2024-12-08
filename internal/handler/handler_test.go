@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/c2pc/go-musthave-metrics/internal/config"
 	"github.com/c2pc/go-musthave-metrics/internal/database"
+	"github.com/c2pc/go-musthave-metrics/internal/hash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +38,7 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -97,7 +99,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -167,7 +169,7 @@ func TestMetricHandler_HandleUpdateJSON(t *testing.T) {
 				res, err := io.ReadAll(result.Body)
 				require.NoError(t, err)
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -209,7 +211,7 @@ func TestMetricHandler_HandleUpdatesJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	var defaultDelta, defaultDelta2 int64 = 10, -6
@@ -288,7 +290,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -364,7 +366,7 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -376,6 +378,111 @@ func TestMetricHandler_HandleUpdateJSON_Compress(t *testing.T) {
 				assert.Equal(t, data.Value, value)
 				assert.NotEmpty(t, *metrics.Value)
 				assert.Equal(t, data.Value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
+func TestMetricHandler_HandleUpdateJSON_Hash(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, hasher)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		hash           bool
+		badHash        bool
+		expectedStatus int
+	}{
+		{"Hash", 1, true, false, http.StatusOK},
+		{"Doesn't hash", 2, false, false, http.StatusOK},
+		{"Bad hash", 2, true, true, http.StatusBadRequest},
+		{"Empty data", 0, true, false, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			var out []byte
+			var metricData = struct {
+				ID    string  `json:"id"`
+				Type  string  `json:"type"`
+				Delta int64   `json:"delta,omitempty"`
+				Value float64 `json:"value,omitempty"`
+			}{
+				ID:    "1",
+				Type:  gaugeStorage.GetName(),
+				Delta: 1,
+				Value: tt.value,
+			}
+
+			if tt.value != 0 {
+				out, err = json.Marshal(metricData)
+				require.NoError(t, err)
+				buf.Write(out)
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/update/", buf)
+			request.Header.Set("Content-Type", "application/json")
+
+			if tt.hash {
+				var d []byte
+				if tt.badHash {
+					d = []byte("badhash")
+				} else {
+					d = out
+				}
+				hs, err := hasher.Hash(d)
+				require.NoError(t, err)
+				request.Header.Set(config.HashHeader, hs)
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				body, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				if tt.hash {
+					requestHash := w.Header().Get(config.HashHeader)
+					assert.NotEmpty(t, requestHash)
+					ok, err := hasher.Check(body, []byte(requestHash))
+					require.NoError(t, err)
+					require.True(t, ok)
+				}
+
+				var metrics model.Metric
+				err = json.Unmarshal(body, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, metricData.ID, metrics.ID)
+				assert.Equal(t, metricData.Type, metrics.Type)
+
+				value, err := gaugeStorage.Get(context.Background(), metricData.ID)
+				require.NoError(t, err)
+				assert.Equal(t, metricData.Value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, metricData.Value, *metrics.Value)
 			}
 
 			require.NoError(t, result.Body.Close())
@@ -395,7 +502,7 @@ func TestMetricHandler_HandleValue(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -504,7 +611,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	var defaultDelta int64 = -6
@@ -584,7 +691,7 @@ func TestMetricHandler_HandleValueJSON(t *testing.T) {
 				res, err := io.ReadAll(result.Body)
 				require.NoError(t, err)
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -628,7 +735,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -703,7 +810,7 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				var metrics model.Metrics
+				var metrics model.Metric
 				err = json.Unmarshal(res, &metrics)
 				require.NoError(t, err)
 
@@ -721,6 +828,112 @@ func TestMetricHandler_HandleValueJSON_Compress(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricHandler_HandleValueJSON_Hash(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, hasher)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		value          float64
+		hash           bool
+		badHash        bool
+		expectedStatus int
+	}{
+		{"Hash", 1, true, false, http.StatusOK},
+		{"Doesn't hash", 2, false, false, http.StatusOK},
+		{"Bad hash", 2, true, true, http.StatusBadRequest},
+		{"Empty data", 0, true, false, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data = struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			}{
+				ID:   "1",
+				Type: gaugeStorage.GetName(),
+			}
+
+			buf := new(bytes.Buffer)
+			var out []byte
+
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: data.ID, Value: tt.value})
+			require.NoError(t, err)
+
+			if tt.value != 0 {
+				out, err = json.Marshal(data)
+				require.NoError(t, err)
+				buf.Write(out)
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/value/", buf)
+			request.Header.Set("Content-Type", "application/json")
+
+			if tt.hash {
+				var d []byte
+				if tt.badHash {
+					d = []byte("badhash")
+				} else {
+					d = out
+				}
+				hs, err := hasher.Hash(d)
+				require.NoError(t, err)
+				request.Header.Set(config.HashHeader, hs)
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				body, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				if tt.hash {
+					requestHash := w.Header().Get(config.HashHeader)
+					assert.NotEmpty(t, requestHash)
+					ok, err := hasher.Check(body, []byte(requestHash))
+					require.NoError(t, err)
+					require.True(t, ok)
+				}
+
+				var metrics model.Metric
+				err = json.Unmarshal(body, &metrics)
+				require.NoError(t, err)
+
+				assert.Equal(t, data.ID, metrics.ID)
+				assert.Equal(t, data.Type, metrics.Type)
+
+				value, err := gaugeStorage.Get(context.Background(), data.ID)
+				require.NoError(t, err)
+				assert.Equal(t, tt.value, value)
+				assert.NotEmpty(t, *metrics.Value)
+				assert.Equal(t, tt.value, *metrics.Value)
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
 func TestMetricHandler_HandleAll(t *testing.T) {
 	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
@@ -733,7 +946,7 @@ func TestMetricHandler_HandleAll(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -810,7 +1023,7 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 	}
 	defer m.Close()
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -854,6 +1067,71 @@ func TestMetricHandler_HandleAll_Compress(t *testing.T) {
 	}
 }
 
+func TestMetricHandler_HandleAll_Hash(t *testing.T) {
+	gaugeStorage, err := storage.NewGaugeStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
+	assert.NoError(t, err)
+
+	m, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer m.Close()
+
+	hasher, err := hash.New("key")
+	require.NoError(t, err)
+
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, m, hasher)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		hash           bool
+		expectedStatus int
+	}{
+		{"Hash", false, http.StatusOK},
+		{"Doesn't hash", true, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = gaugeStorage.Set(context.Background(), storage.Value[float64]{Key: "id", Value: 10})
+			require.NoError(t, err)
+
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+			if tt.hash {
+				var d []byte
+				hs, err := hasher.Hash(d)
+				require.NoError(t, err)
+				request.Header.Set(config.HashHeader, hs)
+			}
+
+			w := httptest.NewRecorder()
+			handler2.ServeHTTP(w, request)
+
+			result := w.Result()
+			assert.Equal(t, tt.expectedStatus, result.StatusCode)
+
+			if result.StatusCode == http.StatusOK {
+				body, err := io.ReadAll(result.Body)
+				require.NoError(t, err)
+
+				if tt.hash {
+					requestHash := w.Header().Get(config.HashHeader)
+					assert.NotEmpty(t, requestHash)
+					ok, err := hasher.Check(body, []byte(requestHash))
+					require.NoError(t, err)
+					require.True(t, ok)
+				}
+			}
+
+			require.NoError(t, result.Body.Close())
+		})
+	}
+}
+
 func TestMetricHandler_Ping(t *testing.T) {
 	m, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	if err != nil {
@@ -868,7 +1146,7 @@ func TestMetricHandler_Ping(t *testing.T) {
 	counterStorage, err := storage.NewCounterStorage(storage.TypeMemory, nil)
 	assert.NoError(t, err)
 
-	handler2 := handler.NewHandler(gaugeStorage, counterStorage, &db)
+	handler2 := handler.NewHandler(gaugeStorage, counterStorage, &db, nil)
 	require.NoError(t, err)
 
 	tests := []struct {

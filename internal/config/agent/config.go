@@ -12,30 +12,39 @@ const (
 	defaultServerAddress  = "localhost:8080"
 	defaultPollInterval   = 2
 	defaultReportInterval = 10
+	defaultRateLimit      = 1
 )
 
 var (
 	serverAddress  string
 	pollInterval   int
 	reportInterval int
+	hashKey        string
+	rateLimit      int
 )
 
 type envConfig struct {
 	ServerAddress  string `env:"ADDRESS"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
+	HashKey        string `env:"KEY"`
+	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
 type Config struct {
 	ServerAddress  string
 	PollInterval   int
 	ReportInterval int
+	HashKey        string
+	RateLimit      int
 }
 
 func Parse() (*Config, error) {
 	flag.StringVar(&serverAddress, "a", defaultServerAddress, "The Address of the server")
 	flag.IntVar(&pollInterval, "p", defaultPollInterval, "The interval between polls in seconds")
 	flag.IntVar(&reportInterval, "r", defaultReportInterval, "The interval between reports in seconds")
+	flag.StringVar(&hashKey, "k", "", "The hash key")
+	flag.IntVar(&rateLimit, "l", defaultRateLimit, "The rate limit")
 
 	cfg := Config{}
 
@@ -68,6 +77,22 @@ func Parse() (*Config, error) {
 		cfg.ReportInterval = envCfg.ReportInterval
 	} else {
 		cfg.ReportInterval = reportInterval
+	}
+
+	//Parsing Hash Key
+	if envCfg.HashKey != "" {
+		cfg.HashKey = envCfg.HashKey
+	} else if v := os.Getenv("KEY"); v != "" {
+		cfg.HashKey = v
+	} else {
+		cfg.HashKey = hashKey
+	}
+
+	//Rate limit
+	if envCfg.RateLimit != 0 {
+		cfg.RateLimit = envCfg.RateLimit
+	} else {
+		cfg.RateLimit = rateLimit
 	}
 
 	return &cfg, nil

@@ -10,10 +10,16 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/retry"
+	"github.com/c2pc/go-musthave-metrics/internal/workerpool"
 )
 
 type Updater interface {
-	UpdateMetric(ctx context.Context, metrics []model.Metrics) error
+	UpdateMetric(ctx context.Context, metrics ...model.Metric) error
+}
+
+type Worker interface {
+	TaskRun(task workerpool.Task)
+	TaskResult() <-chan error
 }
 
 type MetricReader[T float64 | int64] interface {
@@ -32,28 +38,46 @@ type Reporter struct {
 	gaugeMetric   MetricReader[float64]
 	client        Updater
 	timer         Timer
+	worker        Worker
 }
 
-func New(client Updater, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64]) *Reporter {
+func New(client Updater, workerPool Worker, timer Timer, counterMetric MetricReader[int64], gaugeMetric MetricReader[float64]) *Reporter {
 	return &Reporter{
 		counterMetric: counterMetric,
 		gaugeMetric:   gaugeMetric,
 		client:        client,
 		timer:         timer,
+		worker:        workerPool,
 	}
 }
 
 func (r *Reporter) Run(ctx context.Context) {
+	go r.poll(ctx)
+	go r.report(ctx)
+
+	<-ctx.Done()
+}
+
+func (r *Reporter) poll(ctx context.Context) {
 	pollTicker := time.NewTicker(time.Duration(r.timer.PollInterval) * time.Second)
 	defer pollTicker.Stop()
-
-	reportTicker := time.NewTicker(time.Duration(r.timer.ReportInterval) * time.Second)
-	defer reportTicker.Stop()
 
 	for {
 		select {
 		case <-pollTicker.C:
 			r.pollMetrics()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (r *Reporter) report(ctx context.Context) {
+	reportTicker := time.NewTicker(time.Duration(r.timer.ReportInterval) * time.Second)
+	defer reportTicker.Stop()
+
+	for {
+		select {
 		case <-reportTicker.C:
 			r.reportMetrics(ctx)
 		case <-ctx.Done():
@@ -84,60 +108,41 @@ func (r *Reporter) pollMetrics() {
 
 func (r *Reporter) reportMetrics(ctx context.Context) {
 	logger.Log.Info("Starting reporting metrics...")
-	waitGroup := sync.WaitGroup{}
 
-	var counters []model.Metrics
-	for key, value := range r.counterMetric.GetStats() {
-		counters = append(counters, model.Metrics{
-			ID:    key,
-			Type:  r.counterMetric.GetName(),
-			Delta: &value,
-		})
-
-	}
-
-	var gauges []model.Metrics
+	var metrics []model.Metric
 	for key, value := range r.gaugeMetric.GetStats() {
-		gauges = append(gauges, model.Metrics{
+		metrics = append(metrics, model.Metric{
 			ID:    key,
 			Type:  r.gaugeMetric.GetName(),
 			Value: &value,
 		})
 	}
 
-	if len(counters) > 0 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			err := r.updateMetrics(ctx, counters)
-			if err != nil {
-				logger.Log.Info("Error updating counters metric", logger.Error(err))
-				return
-			}
-		}()
+	for key, value := range r.counterMetric.GetStats() {
+		metrics = append(metrics, model.Metric{
+			ID:    key,
+			Type:  r.counterMetric.GetName(),
+			Delta: &value,
+		})
 	}
 
-	if len(gauges) > 0 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			err := r.updateMetrics(ctx, gauges)
-			if err != nil {
-				logger.Log.Info("Error updating gauge metric", logger.Error(err))
-				return
-			}
-		}()
+	if len(metrics) > 0 {
+		r.worker.TaskRun(func() error {
+			return r.client.UpdateMetric(ctx, metrics...)
+		})
+		err := <-r.worker.TaskResult()
+		if err != nil {
+			logger.Log.Info(err.Error())
+		}
 	}
-
-	waitGroup.Wait()
 
 	logger.Log.Info("Finish reporting metrics...")
 }
 
-func (r *Reporter) updateMetrics(ctx context.Context, metrics []model.Metrics) error {
+func (r *Reporter) updateMetrics(ctx context.Context, metrics ...model.Metric) error {
 	return retry.Retry(
 		func() error {
-			return r.client.UpdateMetric(ctx, metrics)
+			return r.client.UpdateMetric(ctx, metrics...)
 		},
 		func(err error) bool {
 			var netErr net.Error
