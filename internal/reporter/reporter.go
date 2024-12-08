@@ -10,7 +10,7 @@ import (
 	"github.com/c2pc/go-musthave-metrics/internal/logger"
 	"github.com/c2pc/go-musthave-metrics/internal/model"
 	"github.com/c2pc/go-musthave-metrics/internal/retry"
-	"github.com/c2pc/go-musthave-metrics/internal/worker"
+	"github.com/c2pc/go-musthave-metrics/internal/worker_pool"
 )
 
 type Updater interface {
@@ -18,7 +18,7 @@ type Updater interface {
 }
 
 type Worker interface {
-	TaskRun(task worker.Task)
+	TaskRun(task worker_pool.Task)
 	TaskResult() <-chan error
 }
 
